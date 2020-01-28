@@ -1,4 +1,6 @@
-# Master thesis presented on July 1st 2019.
+# Master thesis 
+presented on July 1st 2019.
+
 ### "Vaccination as investment in education. A difference-in-differences analysis of measles vaccination on educational attainment in India."
 
 #### abstract: 
