@@ -1,0 +1,568 @@
+---
+title: "Vaccination as investment in education"
+subtitle: "A difference-in-differences analysis of measles vaccination on education"
+author: "Alvaro Gerns"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+institute: "University of Geneva"
+fontfamily: mathpazo
+fontsize: 9pt
+bibliography: library.bib
+output: 
+  beamer_presentation:
+    slide_level: 3
+    theme: "Boadilla"
+    #toc: true
+    keep_tex: true
+    latex_engine: lualatex
+header-includes:
+- \AtBeginSubsection{}
+- \usepackage{dcolumn}
+- \usepackage{multirow}
+- \usepackage{booktabs}
+- \usepackage{longtable}
+editor_options: 
+  chunk_output_type: console
+---
+
+
+```{r Libraries, echo=FALSE, include=FALSE, cache=TRUE}
+knitr::opts_chunk$set(echo = FALSE, message=FALSE, warning=FALSE, cache=TRUE)
+#\listoftables
+#    colortheme: "lily"
+
+#rm(list=ls())
+#extrafont::font_import()
+#extrafont::loadfonts()
+#- \usepackage{sansmathfonts}
+
+#- \renewcommand*\familydefault{\sfdefault} %% Only if the base font of the document is to be sans serif
+
+#rmarkdown::render('~/Documents/Academics/thesis/master/code/thesis.Rmd', output_format =  'pdf_document')
+
+#source("~/Documents/Academics/thesis/master/code/source.R")
+
+knitr::opts_chunk$set(echo = FALSE)
+options(tinytex.verbose = TRUE)
+options(warn=1)
+
+
+library(janitor)
+library(foreign)
+library(readxl)
+library(haven)
+
+library(stringr)
+library(splitstackshape)
+library(lubridate)
+
+library(AER)
+library(lmtest)
+library(zoo)
+library(car)
+
+library(survival)
+library(Formula)
+library(rdd)
+library(np)
+library(rddtools)
+library(stargazer)
+library(miceadds)
+library(did)
+
+library(knitr)
+library(kableExtra)
+library(xtable)
+library(plm)
+library(multiwayvcov)
+library(tidyverse)
+library(magick)
+
+
+
+```
+
+```{r Importing, echo=FALSE, cache=TRUE, message=FALSE, warning=FALSE}
+# Dataset includes all necessary variables for the 
+df <- readRDS("/Users/gerns/Documents/Academics/thesis/master_thesis_large_files/input/df_v1.rds")
+
+low_cov_states <- c("gujarat", "meghalaya", "tripura")
+already_mcv2 <- c("puducherry", "sikkim", "goa", "delhi")
+
+```
+
+```{r Last adjustments, echo=FALSE, cache=TRUE, message=FALSE, warning=FALSE}
+df1 <- df %>% 
+  select(-age) %>% 
+  filter(!state %in% already_mcv2) %>% 
+  mutate(count_individuals = 1) %>% 
+  mutate(educ_num_years = case_when(educ_num_years==98 ~ NA_real_, TRUE ~ educ_num_years)) %>% 
+  mutate(mother_d_literate = case_when(mother_d_literate %in% c(3,4) ~ NA_real_,
+                                       mother_d_literate %in% c(1,2) ~ 1,
+                                       TRUE ~ 0))
+  
+df2 <- df1 %>% 
+  mutate(campaign_end_date = case_when(key=="phase_1" ~ dmy("10-07-2011"),
+                                     key=="phase_2" ~ dmy("07-06-2012"),
+                                     key=="phase_3" ~ dmy("27-11-2013"),
+                                     key=="no_campaign" ~ dmy("07-06-2012"))) %>% 
+  mutate(age_campaign_exact = time_length(interval(birth_date, campaign_end_date), "year")) %>% 
+  mutate(D1 = case_when(key !="no_campaign" & age_campaign_exact <10 ~ 1,
+                        TRUE ~ 0)) %>% 
+  mutate(age_campaign_rounded = round(age_campaign_exact,0)) %>% 
+  mutate(age_campaign = floor(age_campaign_exact)) %>% 
+  mutate(region = case_when(key=="no_campaign" ~ 0, 
+                       key!="no_campaign" ~ 1)) %>% 
+  mutate(age_interview = floor(age_interview)) %>% 
+  mutate(groups = case_when(between(age_campaign, 6,9.999) & D1==1 ~ "treatment",
+                            between(age_campaign, 10,13.9999) & D1==0 ~ "control_old",
+                            between(age_campaign, 6,9.999) & D1==0 ~ "control_young",
+                            between(age_campaign, 14,17.999) & D1==0 ~ "control_very_old",
+                            TRUE ~ NA_character_)) %>% 
+  #filter(groups %in% c("treatment", "control_old", "control_young", "control_very_old")) %>% 
+  mutate(age_group = case_when(groups=="treatment" ~ "young", 
+                               groups=="control_old" ~ "old",
+                               groups=="control_young" ~ "young",
+                               groups=="control_very_old" ~ "vold")) %>% 
+    mutate(young = case_when(age_group=="young" ~ 1, age_group=="old" ~ 0, 
+                           TRUE ~NA_real_)) %>% 
+  mutate(old_very_old = case_when(age_group=="old" ~ 1, 
+                                  age_group=="vold" ~ 0, 
+                                  TRUE ~ NA_real_)) %>% 
+   # mutate_at(vars(wealth_index,sex, mother_d_literate, father_educ_level,mother_educ_level), as.factor) %>% 
+  mutate(C = region) %>% 
+  mutate(school_date = case_when(month(interview_date)>=7 ~ dmy(paste0("15-04-", year(interview_date))),
+                                 month(interview_date)<=6 ~ dmy(paste0("15-04-", year(interview_date)-1)))) %>% 
+  mutate(school_age = floor(time_length(interval(birth_date, school_date), "year"))) %>% 
+  mutate(sex = as.factor(sex)) %>% 
+  mutate(residence = as.factor(residence))
+
+
+```
+
+  
+```{r Robustness calculations, echo=FALSE, eval=TRUE, include=FALSE, cache=TRUE, message=FALSE, warning=FALSE}
+library(broom)
+scenarios <- df2 %>% 
+  mutate(scenario1 = case_when(key=="no_campaign" ~  dmy("10-07-2011"),
+                               TRUE ~ campaign_end_date)) %>% 
+  mutate(scenario2 = case_when(key=="no_campaign" ~  dmy("07-06-2012"),
+                               TRUE ~ campaign_end_date)) %>% 
+  mutate(scenario3 = case_when(key=="no_campaign" ~  dmy("27-11-2013"),
+                               TRUE ~ campaign_end_date)) %>% 
+  gather(scenarios, campaign_end_date, scenario1:scenario3)
+
+test <- scenarios %>% 
+  split(scenarios$scenarios) %>% 
+  map(~.x %>% 
+  #    filter(scenarios == paste0("scenario",i)) %>% 
+      mutate(age_campaign_exact = time_length(interval(birth_date, campaign_end_date), "year")) %>% 
+      mutate(D1 = case_when(key !="no_campaign" & age_campaign_exact <10 ~ 1,
+                            TRUE ~ 0)) %>% 
+      mutate(age_campaign_rounded = round(age_campaign_exact,0)) %>% 
+      mutate(age_campaign = floor(age_campaign_exact)) %>% 
+      mutate(region = case_when(key=="no_campaign" ~ 0, 
+                           key!="no_campaign" ~ 1)) %>% 
+      mutate(age_interview = floor(age_interview)) %>% 
+      mutate(groups = case_when(between(age_campaign, 6,9.999) & D1==1 ~ "treatment",
+                                between(age_campaign, 10,13.9999) & D1==0 ~ "control_old",
+                                between(age_campaign, 6,9.999) & D1==0 ~ "control_young",
+                                between(age_campaign, 14,17.999) & D1==0 ~ "control_very_old",
+                                TRUE ~ NA_character_)) %>% 
+      filter(groups %in% c("treatment", "control_old", "control_young", "control_very_old")) %>% 
+      mutate(age_group = case_when(groups=="treatment" ~ "young", 
+                                   groups=="control_old" ~ "old",
+                                   groups=="control_young" ~ "young",
+                                   groups=="control_very_old" ~ "vold")) %>% 
+          mutate(young = case_when(age_group=="young" ~ 1, age_group=="old" ~ 0, 
+                           TRUE ~NA_real_)) %>% 
+  mutate(old_very_old = case_when(age_group=="old" ~ 1, 
+                                  age_group=="vold" ~ 0, 
+                                  TRUE ~ NA_real_)) 
+  )
+ 
+library(clubSandwich)
+library(methods)
+
+lm <- test %>% 
+  #map(~.x %>% filter(young %in% c(1,0))) %>% 
+  map(~ lm(educ_num_years ~  young + region*young + region +  school_age + mother_educ_years + mother_age + sex + wealth_index + residence, data=.), .id="model")
+
+out <- test %>% 
+#    map(~.x %>% filter(young %in% c(1,0))) %>% 
+  map(~ summary(lm.cluster(educ_num_years ~ young + region*young + region + school_age + mother_educ_years + mother_age + sex + wealth_index + residence, data=., cluster="state")), .id="model")
+
+out1 <- out[[1]]
+out2 <- out[[2]]
+out3 <- out[[3]]
+
+```
+
+# Current state of scientific community
+##
+## Literature review: Channels of vaccination on economic growth
+Narrow economic benefits in form of cost-effectiveness analysis:
+
+  * Health gains through reduced mortality and morbidity:
+    * Bangladesh Measles SIA: $19.2/DALY, with a vaccine cost of 0.02 US dollar [@Bishai2010]
+    * Measles in SEAR-D region: $240/DALY, with a vaccine cost of 0.12 US dollar [@Edejer2005]
+  
+  * Healthcare cost saving for health care system and household:
+    * Measles eradication studied in Brazil, Colombia and Tajikistan has been found to be cost-saving, that is, resulting in net savings to the health system. [@Bishai2010]
+  * Care-related productivity gains by saving parents' productive time of taking care of sick child. [@Broughton2007]
+
+  
+Broad economic benefits in form of cost-benefit analysis:  
+
+  * **Outcome-related productivity gains**
+  * Behaviour-related productivity gains through extended life expectancy.
+    [@Meij2009], [@Bloom2005]
+
+
+### Outcome-related productivity gains
+
+- Reduced infant mortality leads to forecasted annual earning of 4.61 - 14.10 US dollar/child. [@Bloom2005]
+
+- Significant test score differences between 10-year-old children in Indonesia that received measles, polio, TB and DPT compared to children with no vaccination. [@Bloom2012] 
+
+- Mother-fixed effects study of measles vaccination in South Africa in 1995 on schooling.  [@Anekwe2015]
+
+  * Results: 0.188 grades gained for each vaccinated child. 
+  * Limitations: Collecting vaccination status at 12 months while measles-second-dose (MCV2) was given at 23 months in South Africa. 
+  
+- Maternal tetanus vaccination on schooling attainment in Bangladesh [@Canning2011]
+
+  * RCT conducted in 1974 administering cholera vaccine to the control group and tetanus toxoid to the treatment group. 
+  * Initial goal of the RCT was looking at cholera effectiveness which only showed 3 month protection.
+  * Result for children of parents with no schooling: Children vaccinated gained on average 0.25 completed school years.
+
+```{r echo=FALSE}
+#* MCV1 reaches 70% effectiveness (MCV2 97%), thus 30% of treatment group susceptible to measles at 12 months. 
+#    * MCV2 coverage was substantially higher than MCV1 suggesting that treatment status might be wrongly classified for control group. 
+  
+```
+
+
+
+# Country context and policy 
+##
+
+### Country context and policy
+
+1. Before 2010 India was the last country in the world with only 1 dose of Measles-containing vaccine. National coverage was at around 70%, which jointly with 85% vaccine effectiveness made 40% of the annual birth cohort susceptible to measles. A single dose of MCV being insufficient for heard immunity (95%). 
+
+2. 47% of estimated global measles deaths occurred in India, while 95% of those cases happened within 10 states. 
+
+3. In 2008 The National Technical Advisory Group on Immunization (NTAGI) recommended MCV2 introduction through catch-up campaigns in states with low coverage and routine delivery for states with high coverage. The threshold was set at 80%. 
+
+4. In 2010 the campaign was launched in 3 phases targeting 130 million children from 9 months to 10 years, irrespective of their vaccination status. The campaign ended in 2013. 
+
+### 
+
+```{r quickmap, wrapfigure = list("L", .9), out.width = "1.05\\textwidth", fig.align="center", fig.width=6, fig.height=10, cache=TRUE, echo=FALSE, message=FALSE, warning=FALSE, comment=NA, eval=TRUE, results='asis'}
+#
+#maps <- image_read("/Users/gerns/Documents/Academics/thesis/master_thesis_large_files/export/plots/joined.png")
+#maps <- image_scale(maps, "6000")1
+
+map_joined <- image_read("/Users/gerns/Documents/Academics/thesis/master_thesis_large_files/export/plots/joined.png")
+map_joined
+
+```
+
+
+### Treatment intensity and within state difference in education
+
+```{r Scatterplot, out.width = "0.6\\textwidth", cache=TRUE, echo=FALSE, fig.width=10, fig.height=7, message=FALSE, warning=FALSE, out.width = ".8\\textwidth", fig.align="center", wrapfigure = list("L", .9)}
+library(hrbrthemes)
+library(devtools)
+source_gist("524eade46135f6348140")
+cov <- read_excel("/Users/gerns/Documents/Academics/thesis/master_thesis_large_files/input/coverage_districts-converted.xlsx", sheet="Table 1", skip=1)
+
+cov1 <- cov %>% 
+  clean_names() %>% 
+  filter(is.na(state)==F) %>% 
+  mutate(state=tolower(state)) %>% 
+  select(state, coverage=coverage_percent) %>% 
+  mutate(state = ifelse(state=="chattisgarh", "chhattisgarh", state))
+
+scatter <- df2 %>% 
+  filter(age_group %in% c("young", "old")) %>%
+  select(state, region, D1, age_group, age_campaign, school_age, educ_num_years) %>% 
+  group_by(state, age_group, school_age, region, D1) %>% 
+  summarize(mean_educ = mean(educ_num_years, na.rm=T)) 
+
+p <- scatter %>% 
+  ggplot(aes(school_age, mean_educ,color=age_group)) + 
+  geom_point() + 
+  geom_smooth(method="lm", se=FALSE) + 
+  stat_smooth_func(geom="text",method="lm",hjust=0.2,parse=TRUE) +
+  facet_wrap(.~region) + theme_ipsum() + theme(legend.title = element_blank()) + labs(caption="Phase 2 dates used for non-campaign ") 
+
+scatter2 <- df2 %>% 
+  #filter(region==1) %>% 
+  filter(age_campaign %in% c(6:14)) %>% 
+  select(state, region, age_group, D1, age_campaign, school_age, educ_num_years) %>% 
+  group_by(state, D1, age_campaign) %>% 
+  summarize(mean_educ = mean(educ_num_years, na.rm=T)) %>% 
+  left_join(cov1, by="state") %>% 
+  ungroup %>% 
+  select(-D1) %>% 
+  spread(age_campaign, mean_educ) %>% 
+  mutate(slope_young = (`9`-`6`)/`6`) %>% 
+  mutate(slope_old = (`14`-`10`)/`10`) %>% 
+  mutate(avg_slope_young = round(lm(slope_young ~coverage)$coefficients[2], 2)) %>% 
+  mutate(avg_slope_old = round(lm(slope_old ~coverage)$coefficients[2], 2)) %>% 
+  gather(group, slope, slope_young, slope_old) %>% 
+  gather(avg_group, avg_slope, avg_slope_old, avg_slope_young) %>% 
+  filter((group=="slope_young" & avg_group=="avg_slope_young") | (group=="slope_old" & avg_group=="avg_slope_old")) %>% 
+  mutate(label = case_when(group=="slope_old" ~ "Difference in education of 14 and 10 year old children",
+                           group=="slope_young" ~ "Difference in education of 9 and 6 year old children")) %>% 
+  arrange(desc(label)) 
+  
+
+p2 <- scatter2 %>% 
+  ggplot(aes(coverage, slope)) + geom_point() + geom_smooth(method="lm", se=FALSE, color="pink3", size=0.5) + 
+  geom_text(aes(label=state), nudge_y = 0.05, nudge_x = -0.0021) +
+  annotate(x=0.75, y=1.4, "label", label = paste0("slope: ",c(0.70, 1.87))) + 
+  facet_wrap(~label, nrow=2)+ 
+  theme_bw() + 
+  labs(title="Figure 2: Difference in average education and campaign coverage by state",
+       y="Difference in average education", x="Coverage rate") + 
+    theme(plot.title = element_text(hjust = 0.4), text = element_text(size=15))
+
+
+p2
+
+#p2 <- scatter2 %>% 
+#  ggplot(aes(coverage, diff_educ)) + geom_point() + geom_smooth(method="lm", se=FALSE, color="pink3", size=0.5) + geom_text(aes(label=state), nudge_y = 0.02, nudge_x = -0.001) +
+#  theme_classic() + 
+#  labs(subtitle= paste0("Slope: ", scatter2$slope), title="Difference in average education and campaign coverage by state",
+#       y="Difference between old and young cohort's average education")
+
+
+```
+
+
+# Methodology
+##
+
+## Data and approach used 
+
+National Family Health Survey (NFHS-4) 2015/2016:
+
+  - 618.254 children from 6 to 20 years
+  - 622 districts and 32 states/union territories
+  
+Treatment region: 411.620 children in 354 districts of 14 states
+  
+Control region: 206.634 children in 266 districts of 18 states
+
+
+```{r Mini table, cache=TRUE, echo=FALSE, message=FALSE, warning=FALSE, comment=NA, eval=TRUE, include=TRUE}
+mini <- df2 %>% tabyl(region, C) %>% 
+  as_tibble() %>% 
+  mutate(region = case_when(region==0 ~ "Control region",
+                            region==1 ~ "Treatment region")) %>% 
+    mutate_if(is.numeric, list~case_when(.!=488557 ~ 0, TRUE ~ 1)) %>% 
+  rename(`DID table` = region, `Age below 10 years` = `1`, `Age above 10 years` = `0`) %>% 
+  kable("latex", booktabs=T, align="lcc") %>% 
+  kable_styling()
+
+mini
+```
+
+
+\footnotesize Note: Additional information on the location and duration of the campaigns in each state were provided by the Ministry of Health and Family Welfare of India.
+
+
+### Difference-in-Differences approach
+
+${2 \times 2 }$ DID regression:
+\begin{equation}
+Y_{ijt} = \beta_0 + \beta_1*Cohort_{t} + \beta_2*Region_{j} + \beta_3*Interaction_{jt} + \beta_4*X_{ijt} + \epsilon_{ijt}
+\end{equation}
+
+  where, 
+  
+  ${Y_{ijt}}$ captures educational attainment as the highest school grade a child completed until the day of the interview,
+  
+  ${Cohort_t}$ is the full set of time effect,
+
+  ${Region_{j}}$ is the full set of regional effects,
+  
+  ${Interaction_{jt}}$ is the Region-Cohort interaction with the coefficient of interest ${\beta_3}$,
+
+  ${X_{ijt}}$ are the individual specific covariates and 
+
+  ${\epsilon_{ijt} = \theta_{i} + \phi_{t} + \gamma_{ijt}}$ represents the error term with
+
+  ${\theta_{i}}$ as time-invariant individual-specific effects
+  
+  ${\phi_{t}}$ as unobserved time effects and
+  
+  ${\gamma_{ijt}}$ as temporary individual-specific effects. 
+  
+
+
+### Required assumptions in the DID setting
+
+
+```{r echo=FALSE}
+#For any causal effect to hold exchangeability, positivity and Stable Unit Treatment Value Assumption (SUTVA) must hold. 
+# SUTVA. no interference and only 1 version of treatment possible.  
+#Additionally for DID: 
+
+```
+
+1. Selection into treatment is independent of temporary individual-specific shocks. In other words:
+
+${E(\epsilon_{ijt}|Treatment_{it}) = E(\theta_{i}|Treatment_{it}) + \phi_{t}}$
+
+
+2. Common trend assumption, which requires in the absence of treatment both groups to follow a parallel trend over time. 
+In other words, this time trend ${\phi_{t_1} - \phi_{t_0}}$ should be the same in both groups. 
+
+### 
+
+```{r Stargazer Model 1, results='asis', cache=TRUE,  message=FALSE, echo=FALSE}
+
+stargazer(lm[[1]], lm[[2]], lm[[3]], 
+          t= list(out1[,3], out2[,3], out3[,3]),
+          se = list(out1[,2], out2[,2], out3[,2]), t.auto=FALSE, p.auto=FALSE,
+          p = list(out1[,4], out2[,4], out3[,4]), title="Robustness scenarios",
+          type = "latex", align=TRUE, no.space=TRUE,
+          omit.stat=c("f", "ser", "rsq"),
+          #column.sep.width = "-5pt",
+          dep.var.labels='Non-campaign states with pseudo campaign dates of:',
+          dep.var.caption='Dependent variable: School-years completed',
+          column.labels=c("Phase 1","Phase 2", "Phase 3"),
+          model.numbers  = TRUE,
+          order=c("Constant", "region","young:region", "young", "sex", "school_age", "mother_educ_years", "mother_age", "wealth_index", "residence"), 
+          covariate.labels=c("Constant", "Low-performing region","DID coefficient", "Young cohort",  "Female", "School-calendar age","Mother years education", "Mother age", "Wealth Index", "Rural"),
+          table.placement = "H", header=FALSE ,
+          notes.align = "l",font.size = "scriptsize")
+
+```
+
+### Age on educational attainment shows parallel trends 
+
+```{r Ages, echo=FALSE, cache=TRUE, warning=FALSE, include=TRUE, fig.width=10, fig.height=7.5, out.width = ".9\\textwidth", fig.align="center", wrapfigure = list("L", .8), message=FALSE}
+library(hrbrthemes)
+library(ggthemes) # Load
+
+p_mod2 <- df2 %>% 
+  #filter(between(school_age, 6,20)) %>% 
+  mutate(age_2016 = floor(time_length(interval(birth_date, dmy("01-01-2016")), "year"))) %>% 
+  #filter(between(age_campaign, 6,14))%>% 
+  mutate(count_individuals = 1) %>% 
+  select(id, D1, region, age_campaign, school_age, educ_num_years, count_individuals, age_2016) %>% 
+  gather(age_type, age, age_campaign, school_age, age_2016) %>% 
+  filter(between(age, 6, 20)) %>% 
+  mutate(label = case_when(age_type=="age_2016" ~ "Child's age on 01/01/2016",
+                           age_type=="age_campaign" ~ "Child's age on last campaign date",
+                           age_type=="school_age" ~ "Child's age at beginning of current school-term")) %>% 
+  group_by(D1, region, label, age) %>% 
+  summarise(mean_educ = mean(educ_num_years, na.rm=T),count_individuals=sum(count_individuals)) %>% 
+  mutate(group = case_when(region==1 & D1==0 ~ "Target region", 
+                           region==1 & D1==1 ~ "Treatment group",
+                           region==0 ~ "Control region"))%>% 
+  ggplot(aes(x=age, y=mean_educ, color=group)) + geom_line() + 
+  facet_wrap(~label, nrow=3) +
+  theme(legend.text=element_text(size=15), legend.title = element_blank()) + 
+  theme_bw() + 
+  theme(plot.title = element_text(hjust = 0.0), text = element_text(size=12), legend.text=element_text(size=11)) + 
+  theme(legend.title=element_blank()) + 
+  labs(title="Figure 3: Average number of school-years completed by different age types", x="", y="Average number of school-years completed", caption="Note: Age at end of campaign considers Phase 2-dates for the control region") + 
+  scale_y_continuous(limit=c(0,12)) + 
+  scale_x_continuous(limit=c(6,20), breaks=seq(6,20,2)) + 
+  theme(legend.position="right") + 
+  scale_color_manual(values=c("darkblue", "#ffae19", "#4cc1bb")) + 
+  scale_x_reverse()
+  
+p_mod2
+
+```
+
+
+
+### ${t \times 2 }$ DID regression with ${t ∈ (6 , 20)}$: 
+
+\begin{equation}
+Y_{ijt} = \beta_0 + \beta_{1}D_{ijt} + \beta_{2}Age_{t} + \beta_{3}DAge_{ijt} + \beta_{4}Region_{ij} + \beta_{5}RegionAge_{jt} + \beta_{6}X_{ijt} + \epsilon_{ijt}
+\end{equation}
+
+where, 
+
+${Y_{ijt}}$ captures educational attainment as the highest school grade a child completed until the day of the interview,
+
+${Age_{t}}$ captures grade-level time heterogeneity with age at start of the school year in which the interview was conducted
+  
+  ${Region_{j}}$ captures fixed regional effects,
+  
+  ${Interaction_{jt}}$ is the Treatment-Age interaction with the coefficient of interest ${\beta_3}$,
+  
+  ${RegionAge_{jt}}$ captures time-varying regional effects,
+  
+  ${X_{ijt}}$ are the individual specific covariates and 
+  
+  ${\epsilon_{ijt} = \theta_{i} + \phi_{t} + \gamma_{ijt}}$ represents the error term with
+
+${\theta_{i}}$ as time-invariant individual-specific effects
+
+${\phi_{t}}$ as unobserved time effects and
+  
+  ${\gamma_{ijt}}$ as temporary individual-specific effects. 
+
+
+###
+
+
+```{r Model 2 output, results='asis',  cache=TRUE, include=TRUE,  message=FALSE, echo=FALSE}
+
+stargazer(mod2_raw, mod2, mod2_placebo,type = "latex",
+          se = list(mod2_raw_se, mod2_se, se_placebo), 
+          p = list(p_raw, p_mod2, p_placebo),
+          t = list(t_raw, t_mod2, t_placebo), t.auto=FALSE, p.auto=FALSE,
+          title="Regression Results Model 2", align=TRUE, no.space=TRUE, font.size="scriptsize",
+          omit.stat=c("f", "ser", "rsq"),
+          column.sep.width = "-15pt",
+          #order=c("Constant", "region", "young", "young:region", "sex", "mother_educ_years", "mother_age", "wealth_index"), 
+          table.placement = "H", 
+          dep.var.labels='',
+          dep.var.caption='Dependent variable: School-years completed',
+          dep.var.labels.include=TRUE, 
+          model.numbers  = TRUE,
+          column.labels = c('Core', 'Core','Placebo'),
+          #column.labels = c('Experiment of Interest', 'Experiment of Interest','Control Experiment'),
+          order=c("Constant", "D1","D1:school_age", "school_age",  "school_age:region","region", "sex", "mother_educ_years", "mother_age", "wealth_index", "residence"),
+          covariate.labels=c("Constant", "Treatment", "DID coefficient","School-calendar age", "Age-region interaction", "Region","Female", "Mother years education", "Mother age", "Wealth Index", "Rural"),
+          header=FALSE)
+
+```
+
+
+### Results 
+
+
+1. For every 4 children vaccinated against measles there is on average one additional school year gained.
+2. The campaign costed 59.1 million USD and reached around 118.83 million children, which can be translated into an investment of 0.50 USD/vaccinated child, or 2 USD for gaining one additional year of schooling, comparable with the deworming cost of 3.5 USD for one additional school year.
+3. In terms of wage gain a country-specific mincerian equation estimates a 2.63% increase on wages due to an additional year of schooling. [@Mitra2019]
+4. Large difference in treatment effect by socioeconomic groups, with the poorest quintile of the population gaining 0.36 additional school years by receiving vaccination, while the richest quintile gains only an additional 0.14 years of schooling through vaccination.
+
+### Limitations
+
+1. Model assumes linear effects, while effect of vaccination most-likely non-linear on different school-years. 
+2. Migration that occured between the campaign and the data collectionmight introduce confounding if affecting our age group. 
+3. Results are only valid for children between 6 and 14 years, given the treatment cohort. 
+4. Future research should expand on this study analyzing the same cohort on the effects of vaccination on secondary and tertiary education as well as labor market outcomes.
+
+
+### References
+
+
+
+
+
+
+
+
+

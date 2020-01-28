@@ -1,0 +1,306 @@
+---
+output:
+  html_document
+author:Alvaro
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+library(sf)
+library(sp)
+library(tidyverse)
+library(janitor)
+library(openxlsx)
+library(readxl)
+library(sp)
+library(RColorBrewer)
+library(scales)
+library(sf)
+library(hrbrthemes)
+library(ggrepel)
+
+df <- readRDS("/Users/gerns/Documents/Academics/thesis/master_thesis_large_files/input/df_v1.rds")
+
+low_cov_states <- c("gujarat", "meghalaya", "tripura")
+already_mcv2 <- c("puducherry", "sikkim", "goa", "delhi")
+
+df1 <- df %>% 
+  select(-age) %>% 
+  filter(!state %in% already_mcv2) %>% 
+  mutate(count_individuals = 1) %>% 
+  mutate(educ_num_years = case_when(educ_num_years==98 ~ NA_real_, TRUE ~ educ_num_years)) %>% 
+  mutate(mother_d_literate = case_when(mother_d_literate %in% c(3,4) ~ NA_real_,
+                                       mother_d_literate %in% c(1,2) ~ 1,
+                                       TRUE ~ 0))
+
+
+campaign_states <- df1 %>% 
+  filter(key!="no_campaign") %>% 
+  tabyl(state, key) %>% 
+  pull(state)  
+  
+
+campaign_states
+
+```
+
+```{r Coverage data}
+
+cov <- read_excel("/Users/gerns/Documents/Academics/thesis/master_thesis_large_files/input/coverage_districts-converted.xlsx", sheet="all")
+
+cov1 <- cov %>% 
+  clean_names() %>% 
+  tidyr::fill(state) %>% 
+  mutate_at(vars(state, name_of_district), tolower) %>% 
+  arrange(state, name_of_district) %>% 
+  rename(admin1 = state, admin2 = name_of_district) %>% 
+  mutate(cov_name = 1) %>% 
+    mutate(admin1 = ifelse(admin1=="chattisgarh", "chhattisgarh", admin1)) %>% 
+  mutate(admin1 = ifelse(admin1=="guajarat", "gujarat", admin1)) %>% 
+  filter(admin1 %in% campaign_states) %>% 
+  mutate(admin2 = case_when(admin2=="chanlang" ~ "changlong",
+                            admin2=="kurung  kumey" ~ "kurung kumey",
+                            admin2=="tawang" ~ "towang",
+                            admin2=="west kaemeng" ~ "west kameng",
+                            admin2=="chirrang" ~ "chirang",
+                            admin2=="darang" ~ "darrang",
+                            admin2=="goalpra" ~ "goalpara",
+                            admin2=="hailkandi" ~ "hailakandi",
+                            admin2=="morigaon" ~ "marigoan",
+                            admin2=="sivasagar" ~ "sibsagar",
+                            admin2=="tinukia" ~ "tinsukhia",
+                            admin2=="aurangabad" ~ "aurangaabad",
+                            admin2=="bastar" ~ "baster",
+                            admin2=="bijapur" ~ "bijaapur",
+                            admin2=="mahasamand" ~ "mahasamund",
+                            admin2=="junagardh" ~ "junagadh",
+                            admin2=="yamuna nagar" ~ "yamunanagar",
+                            admin2=="deogarh" ~ "deoghar",
+                            admin2=="lohordaga" ~ "lohardaga",
+                            admin2=="palamau" ~ "palamu",
+                            admin2=="sahebganj" ~ "sahibganj",
+                            admin2=="saraikela" ~ "saraikella",
+                            admin2=="ashok nagar" ~ "ashoknagar",
+                            admin2=="badwani" ~ "barwani",
+                            admin2=="sahajpur" ~ "shajapur",
+                            admin2=="satna" ~ "satana",
+                            admin2=="shoepur" ~ "sheopur",
+                            admin2=="churachandrapur" ~ "churachandpur",
+                            admin2=="imphal east" ~ "east imphal",
+                            admin2=="imphal west" ~ "imphal",
+                            admin2=="east khasi hills" ~ "east khasi hill",
+                            admin2=="ribhoi" ~ "ri-bhoi",
+                            admin2=="west khasi hills" ~ "west khasi hill",
+                            admin2=="tunseng" ~ "tuensang",
+                            admin2=="chittorgarh" ~ "chittaurgarh",
+                            admin2=="rasamand" ~ "rajsamand",
+                            admin2=="north tripura" ~ "tripura north",
+                            admin2=="south tripura" ~ "tripura south",
+                            admin2=="west tripura" ~ "tripura west",
+                            admin2=="balia" ~ "ballia",
+                            admin2=="gzazipur" ~ "ghazipur", 
+                            admin2=="e. singhbhum" ~ "singhbhum east",
+                            admin2=="w. singhbhum" ~ "singhbhum west",
+                            admin2=="dima hasao"~ "n. cachar hills",
+                            TRUE ~ admin2
+                            ))
+
+
+
+cov1 %>% tabyl(admin1) %>% 
+  adorn_totals("row")
+
+
+cov2 <- df %>% 
+  select(admin1= state) %>% 
+  unique() %>% 
+  arrange(admin1) %>% 
+  mutate(coverage = case_when(admin1=="goa" ~ 99.1,
+                              admin1=="tamil nadu" ~ 97.6,
+                              admin1=="himachal pradesh" ~ 94.5,
+                              admin1=="andaman and nicobar islands" ~ 92.8,
+                              admin1=="sikkim" ~ 92.5,
+                              admin1=="lakshadweep" ~ 91.9,
+                              admin1=="puducherry" ~ 91.9,
+                              admin1=="daman and diu" ~ 90.9,
+                              admin1=="punjab" ~ 89.1,
+                              admin1=="andhra pradesh" ~ 88.6,
+                              admin1=="kerala" ~ 87.9,
+                              admin1=="chandigarh" ~ 87.3,
+                              admin1=="karnataka" ~ 85.2,
+                              admin1=="maharashtra" ~ 84.5,
+                              admin1=="dadra and nagar haveli" ~ 84.4,
+                              admin1=="mizoram" ~ 83.9,
+                              admin1=="delhi" ~ 83.1,
+                              admin1=="west bengal" ~ 82.8,
+                              admin1=="uttarakhand" ~ 82.1,
+                              admin1=="jammu and kashmir" ~ 81.4,
+                              admin1=="odisha" ~ 81.1,
+                              admin1=="chhattisgarh" ~ 79.9,
+                              admin1=="gujarat" ~ 72.6,
+                              admin1=="jharkhand" ~ 70.5,
+                              admin1=="haryana" ~ 69,
+                              admin1=="rajasthan" ~ 67.5,
+                              admin1=="arunachal pradesh" ~ 65.5,
+                              admin1=="assam" ~ 64.4,
+                              admin1=="manipur" ~ 58.9,
+                              admin1=="madhya pradesh" ~ 57.7,
+                              admin1=="bihar" ~ 54.2,
+                              admin1=="meghalaya" ~ 52.5,
+                              admin1=="tripura" ~ 51.7,
+                              admin1=="uttar pradesh" ~ 47,
+                              admin1=="nagaland" ~ 46.1, TRUE ~ NA_real_
+                              )) %>% 
+  filter(is.na(coverage)==F)
+
+
+```
+
+
+
+```{r Admin 2 }
+cred <- "#cc0000"
+cyellow <-  "#ffff4d"
+clightgreen <- "#63e963"
+cdarkgreen <- "#158415"
+lightblue <- "lightblue"
+
+breaks <- c(60, 80, 100,120)
+colors <- c(cyellow, clightgreen, lightblue)
+#ind_admin2 <- readRDS("/Users/gerns/Documents/Academics/thesis/master_thesis_large_files/input/gadm36_IND_2_sf.rds")
+admin2 <- read_sf("/Users/gerns/Documents/Academics/thesis/master_thesis_large_files/input/GLOBAL_ADM2_IND/GLOBAL_ADM2.shp")
+names(admin2)
+
+ad2 <- admin2 %>% 
+  clean_names() %>% 
+  select(admin2 = adm2_name, admin1 = adm1_name, geometry) %>% 
+  mutate(shape_name=1) %>% 
+  unique()
+
+ad2_name <- ad2 %>% 
+  #as_tibble() %>% 
+  #select(-geometry) %>% 
+  mutate_at(vars(admin1, admin2), tolower) %>% 
+    mutate(admin1 = case_when(admin1=="arunachal pr." ~ "arunachal pradesh", TRUE ~ admin1)) %>% 
+  #filter(admin1 %in% campaign_states) %>% 
+  full_join(cov1, by=c("admin1", "admin2")) %>%
+  arrange(admin1, admin2) %>% 
+  #filter((admin1 %in% campaign_states & is.na(shape_name==cov_name)==F) | (!admin1 %in% campaign_states)) %>% 
+  select(admin1, admin2, shape_name, cov_name, everything()) %>% 
+  mutate(coverage_in_percent = case_when(coverage_in_percent>=110 ~ 110, 
+                                         TRUE ~ coverage_in_percent))
+
+map_post <- ad2_name %>% 
+  ggplot() + 
+  geom_sf(data=ad2_name %>% filter(shape_name==1), lwd = 0) +
+  geom_sf(data=ad2_name %>% filter(shape_name==1), aes(fill=coverage_in_percent), lwd = 0) +
+   coord_sf(datum=NA) +
+  scale_fill_gradient2(low="#ffae19", mid="#4cc1bb", 
+                       midpoint = 75, 
+                       na.value ="darkgrey", oob=squish, high="darkblue", 
+                       limits = c(max(50, min(ad2_name$coverage_in_percent, na.rm=T)), min(100, max(ad2_name$coverage_in_percent, na.rm=T))), guide="colorbar", aesthetics = "fill",
+                       breaks=c(50,60,70,80,90,100,110),
+                       labels=function(x) format(x, big.mark = ",", scientific = FALSE)) +  
+  theme_minimal() +   theme(plot.title = element_text(hjust = 0.3), text = element_text(size=16)) + 
+  labs(x="", y="", title="Campaign coverage rates at district level", caption = "Source: Ministry of Health and Family Welfare\n Note: Non-campaign-states in grey") +
+  theme(legend.title=element_blank()) 
+
+map_post
+
+ggsave(paste0("/Users/gerns/Documents/Academics/thesis/master_thesis_large_files/export/plots/map_post.png"), map_post, dpi=300, width= 25, height=30, units ="cm")
+
+
+
+```
+
+
+```{r}
+library(cowplot)
+ad1_name <- ad2 %>% 
+  #as_tibble() %>% 
+  #select(-geometry) %>% 
+  mutate_at(vars(admin1, admin2), tolower) %>% 
+  mutate(admin1 = case_when(admin1=="arunachal pr." ~ "arunachal pradesh", 
+                            admin1=="pondicherry" ~ "puducherry",
+                            admin1=="jammu & kashmir" ~ "jammu and kashmir",
+                            admin1=="j&k" ~ "jammu and kashmir",
+                            admin1=="daman & diu" ~ "daman and diu",
+                            admin1=="a&n islands" ~ "andaman and nicobar islands",
+                            admin1=="d&n haveli" ~ "dadra and nagar haveli",
+                            TRUE ~ admin1)) %>% 
+  #filter(admin1 %in% campaign_states) %>% 
+  full_join(cov2, by=c("admin1")) %>%
+  arrange(admin1, admin2) %>% 
+  filter(is.na(coverage)==F)%>% 
+  #filter((admin1 %in% campaign_states & is.na(shape_name==cov_name)==F) | (!admin1 %in% campaign_states)) %>% 
+  select(admin1, admin2, shape_name, everything()) %>% 
+  group_by(admin1) %>% 
+  mutate(rank = row_number()) 
+
+
+map_pre_rates <- ad1_name %>% 
+  ggplot() + 
+  geom_sf(data=ad1_name %>% filter(shape_name==1), aes(fill=coverage), lwd = 0) +
+  coord_sf(datum=NA) + 
+  scale_fill_gradient2(low="#ffae19", mid="#4cc1bb", 
+                       midpoint = 75, 
+                       na.value ="darkgrey", oob=squish, high="darkblue", 
+                       limits = c(max(50, min(ad1_name$coverage)), max(100, max(ad1_name$coverage, na.rm=T))), guide="colorbar", aesthetics = "fill", 
+                       breaks=c(50,60,70,80,90,100,110),
+                       labels=function(x) format(x, big.mark = ",", scientific = FALSE)) +  
+  theme_minimal() +   theme(plot.title = element_text(hjust = 0.5), text = element_text(size=16)) + 
+  labs(x="", y="", title="MCV1 coverage in 2010 at state level", caption = "Source: DLHS-3, except Nagaland CES-06") +
+  theme(legend.title=element_blank()) +
+  ggrepel::geom_label_repel(
+    data = ad1_name %>% filter(rank==1),
+    aes(label = paste0(admin1, ", ", coverage, " %"), geometry = geometry),
+    stat = "sf_coordinates",
+    min.segment.length = 0,
+    colour = "black", alpha=0.8,
+    segment.colour = "pink", segment.size=0.8,
+    nudge_y=0.2
+    )
+
+map_pre_rates
+
+ggsave(paste0("/Users/gerns/Documents/Academics/thesis/master_thesis_large_files/export/plots/map_pre_rates.png"), map_pre_rates, dpi=300, width= 25, height=30, units ="cm")
+
+
+map_pre <- ad1_name %>% 
+  ggplot() + 
+  geom_sf(data=ad1_name %>% filter(shape_name==1), aes(fill=coverage), lwd = 0) +
+  coord_sf(datum=NA) + 
+  scale_fill_gradient2(low="#ffae19", mid="#4cc1bb", 
+                       midpoint = 75, 
+                       na.value ="darkgrey", oob=squish, high="darkblue", 
+                       limits = c(max(50, min(ad1_name$coverage)),max(100, max(ad1_name$coverage, na.rm=T))), guide="colorbar", aesthetics = "fill",
+                        breaks=c(50,60,70,80,90,100,110),
+                       labels=function(x) format(x, big.mark = ",", scientific = FALSE)) +  
+  theme_minimal() +   theme(plot.title = element_text(hjust = 0.4), text = element_text(size=16)) + 
+  labs(x="", y="", title="Figure 1: MCV1 coverage in 2010 at state level", caption = "Source: DLHS-3, except Nagaland CES-06") +
+  theme(legend.title=element_blank()) 
+
+map_pre
+
+ggsave(paste0("/Users/gerns/Documents/Academics/thesis/master_thesis_large_files/export/plots/map_pre.png"), map_pre, dpi=300, width= 25, height=30, units ="cm")
+
+
+```
+
+
+```{r}
+test <- plot_grid(map_pre_rates, map_post, ncol=2, labels=LETTERS[1:2])
+test
+dev.off()
+save_plot("/Users/gerns/Documents/Academics/thesis/master_thesis_large_files/export/plots/joined.png",test, nrow = 2, base_height=5, base_width = 20)
+          
+    
+
+```
+
+
+
+
+
+

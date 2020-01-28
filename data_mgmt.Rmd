@@ -1,0 +1,300 @@
+---
+title: "Basic Data management"
+output: html_notebook
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r Loading packages}
+rm(list=ls())
+library(tidyverse)
+library(janitor)
+library(foreign)
+library(readxl)
+library(haven)
+
+library(stringr)
+library(splitstackshape)
+library(lubridate)
+library(tidylog)
+
+library(AER)
+library(lmtest)
+library(zoo)
+library(car)
+library(survival)
+library(Formula)
+library(rdd)
+library(np)
+library(rddtools)
+
+library(miceadds)
+library(plm)
+library(did)
+??did
+library(sjlabelled)
+
+```
+
+
+```{r Import and cleaning}
+pathinput <- ("/Users/gerns/Documents/Academics/thesis/master_thesis_large_files/input/")
+#data <- read_dta(paste0(pathinput, "export_stata.dta"))
+data <- read_dta(paste0(pathinput, "final_dhs.dta")) 
+
+districts <- read_excel(paste0(pathinput, "state_districts.xlsx"), sheet="Sheet1")
+names(districts)
+tabyl(districts$State)
+
+state_dis <- districts %>% 
+  rename(state_num = `State Number`, state = State, total_num_districts = `Total number of Districts`) %>% 
+  mutate(state = tolower(state))%>% 
+  mutate(state = case_when(state=="arunachal pr." ~ "arunachal pradesh", TRUE ~ state)) %>% 
+  gather(key, value, -state_num, -state, -total_num_districts) %>% 
+  filter(grepl('name', key))%>% 
+  filter(is.na(state_num)==F) %>% 
+  cSplit("value", ",") %>% 
+  gather(naming, value, -state_num, -state, -total_num_districts, -key) %>% 
+  select(-naming) %>% 
+  filter(is.na(value)==F) %>% 
+  mutate(value = tolower(value)) %>% 
+  mutate(key = case_when(grepl('phase1',key) ~ "phase_1", 
+                         grepl('phase2',key) ~ "phase_2",
+                         grepl('phase3',key) ~ "phase_3")) %>% 
+  mutate(value = case_when(value=="ri bhoi" ~ "ribhoi", 
+                           value=="ambal" ~ "ambala", 
+                           value=="janjgir champa" ~ "janjgir - champa",
+                           value=="bhiwani fatehabad" ~ "bhiwani",
+                           value=="rajnadgaon" ~ "rajnandgaon",
+                           value=="imphal-east" ~ "imphal east",
+                           value=="east singhbhum" ~ "purbi singhbhum",
+                           value=="west singhbhum" ~ "pashchimi singhbhum",
+                           value=="mahmasmund" ~ "mahasamund",
+                           value=="dantewada" ~ "dakshin bastar dantewada",
+                           value=="kanker" ~ "uttar bastar kanker",
+                           value=="kachhh" ~ "kachchh",
+                           value=="chhattarpur" ~ "chhatarpur",
+                           value=="yamunangar" ~ "yamunanagar",
+                           value=="nobler" ~ "nalbari",
+                           value=="bulandshahar" ~ "bulandshahr",
+                           TRUE~ value))
+
+
+df1 <- data %>% 
+    mutate_at(vars(1:15, 18:42), as.numeric) %>% 
+  mutate_at(vars(state_string, district_string), as.character) %>% 
+  select(-shdistri) %>% 
+  rename(value= district_string, state=state_string) %>% 
+  mutate(state = as.character(state)) %>% 
+  mutate(value = as.character(value)) %>% 
+  mutate(value = case_when(value=="senapati (excluding 3 sub-divisions)" ~ "senapati",
+                           value=="kodarma" ~ "koderma",
+                           value=="khargone (west nimar)" ~ "west nimar",
+                           value=="kaimur (bhabua)" ~ "kaimur",
+                           value=="khandwa (east nimar)" ~ "east nimar",
+                           value=="bara banki" ~ "barabanki",
+                           value=="mahrajganj" ~ "maharajganj",
+                           value=="kanpur dehat" ~ "ramabai nagar",
+                           value=="sant ravidas nagar (bhadohi)" ~ "sant ravidas nagar",
+                           TRUE ~ value))
+
+state_dis %>% tabyl(state)
+df1 %>% tabyl(state)
+
+```
+
+
+```{r Joining dataset with naming and camapign information} 
+df2 <- df1 %>% 
+  left_join(state_dis, by=c("value", "state")) %>% 
+  select(-date_interview, -household_number) %>% 
+  rename(district_name = value, clid = cluster_number) %>% 
+    mutate(child_line_number = as.numeric(child_line_number))%>% 
+  mutate(id = paste0(hhid, "_", clid, "_", child_line_number)) %>% 
+  select(id, hhid, clid, child_line_number,child_age, everything()) %>% 
+  mutate(key = case_when(is.na(key)==T ~ "no_campaign", TRUE ~ key)) %>% 
+  select(id, hhid, clid, child_line_number, child_age, key, state, everything()) 
+  
+df2 %>% tabyl(state, key)
+length(unique(df2$id))
+
+```
+
+
+
+```{r Creating date variables (birth, interview)}
+length(unique(df2$id))
+
+# calculate date that the children receive vaccine. Use the last 
+df3 <- df2 %>% 
+  filter(is.na(interview_month)==F) %>% # 1 obs without month data
+  mutate(birth_date = dmy(paste0("01-", birth_month, "-", birth_year))) %>% 
+  mutate(interview_date = dmy(paste0("01-", interview_month, "-", interview_year))) %>% 
+  mutate(age_interview_exact = time_length(interval(birth_date,interview_date), "year")) %>% 
+  mutate(age_interview = round(age_interview_exact,2))
+
+
+saveRDS(df3, ("/Users/gerns/Documents/Academics/thesis/master_thesis_large_files/input/df_v1.rds"))
+
+
+```
+
+
+
+CHECK campaign_end_date for "Non-Campaign" states!! Which date should be chosen???
+```{r Determine AGE at CAMPAIGN}
+
+df4 <- df3 %>% 
+  mutate(control_mock_phase = case_when(key=="no_campaign" ~ round(runif(902286,1,3.4)))) %>% 
+  mutate(campaign_end_date = case_when(key=="phase_1" ~ dmy("10-07-2011"),
+                                     key=="phase_2" ~ dmy("07-06-2012"),
+                                     key=="phase_3" ~ dmy("27-11-2013"), 
+                                     key=="no_campaign" ~ dmy("27-11-2013"))) %>% 
+                                     #key=="no_campaign" & control_mock_phase==1 ~ dmy("10-07-2011"),
+                                     #key=="no_campaign" & control_mock_phase==2 ~ dmy("07-06-2012"),
+                                     #key=="no_campaign" & control_mock_phase==3 ~ dmy("27-11-2013"))) %>% 
+  mutate(age_campaign_exact = time_length(interval(birth_date, campaign_end_date), "year")) %>% 
+  filter(dplyr::between(age_campaign_exact,6,26)) %>% 
+  mutate(D1 = case_when(key !="no_campaign" & age_campaign_exact <10 ~ 1,
+                        TRUE ~ 0)) %>% 
+  mutate(age_campaign_rounded = round(age_campaign_exact,0)) %>% 
+  mutate(age_campaign = floor(age_campaign_exact)) %>% 
+  mutate(C = case_when(key=="no_campaign" ~ 0, 
+                       key!="no_campaign" ~ 1))
+
+df4 %>% tabyl(age_campaign, D1)
+
+```
+
+```{r Calculate average education by district and Treatment status}
+## States with coverage below 60% (Currently use as proxy to determine success of campaign in reaching target population
+
+low_cov_states <- c("uttar pradesh", "nagaland", "bihar")
+
+df5 <- df4 %>% 
+  #filter(!state %in% low_cov_states) %>% 
+  group_by(C, D1, age_campaign) %>% 
+  mutate(mean_educ = mean(educ_num_years, na.rm=T)) %>% 
+  group_by(C, D1, age_campaign, state) %>% 
+  mutate(state_educ = mean(educ_num_years, na.rm=T)) %>% 
+  ungroup() %>% 
+  mutate(groups = case_when(dplyr::between(age_campaign, 6,9.999) & D1==1 ~ "treatment",
+                            dplyr::between(age_campaign, 10,14) & D1==0 ~ "control_old",
+                            dplyr::between(age_campaign, 6,9.999) & D1==0 ~ "control_young",
+                            TRUE ~ NA_character_)) 
+
+df5 %>% tabyl(age_campaign, D1, groups)
+
+saveRDS(df5, ("/Users/gerns/Documents/Academics/thesis/master_thesis_large_files/input/df_v2.rds"))
+```
+
+```{r DID through GLM}
+# 2 Age groups - Young and OLD
+# If we remove low-coverage states the groups are more balanced
+# Manual ate calculation
+df_mod1 <- df5 %>% 
+  select(state, district_name, key, D1, C, educ_num_years, age_campaign, groups) %>% 
+  mutate(count_individuals = 1) %>% 
+  unite(grouping, groups, C, sep="_") %>% 
+  group_by(grouping) %>% 
+  summarise(mean_educ = mean(educ_num_years, na.rm=T),count_individuals=sum(count_individuals)) %>% 
+  select(-count_individuals) %>% 
+  spread(grouping, mean_educ) %>% 
+  mutate(ate1 = (treatment_1-control_old_1)-(control_young_0-control_old_0)) %>% 
+  mutate(at2 = (treatment_1-control_young_0)-(control_old_1-control_old_0)) 
+
+df_mod2 <- df5 %>% 
+  select(state, district_name, key, D1, C, educ_num_years, age_interview) %>% 
+  mutate(count_individuals = 1) %>% 
+  mutate(age_interview = round(age_interview,0)) %>% 
+  group_by(state, district_name, D1, C, age_interview) %>% 
+  summarise(mean_educ = mean(educ_num_years, na.rm=T),count_individuals=sum(count_individuals))
+hist(df_mod2$count_individuals)
+mod2 <- glm(mean_educ ~ D1 + age_interview + D1*age_interview , weights=count_individuals, data=df_mod2)
+summary(mod2)
+p_mod2 <- df5 %>% 
+    mutate(count_individuals = 1) %>% 
+    mutate(age_interview = round(age_interview,0)) %>% 
+  group_by(D1, C, age_interview) %>% 
+    summarise(mean_educ = mean(educ_num_years, na.rm=T),count_individuals=sum(count_individuals)) 
+
+  
+
+
+
+df_mod3 <- df_mod2 %>% 
+  filter(C==1) 
+mod3 <- glm(mean_educ ~ D1 + age_interview + D1*age_interview , weights=count_individuals, data=df_mod3)
+summary(mod3)
+
+
+
+df_mod2  <- df5 %>% 
+  select(state, district_name, key, D1, C, educ_num_years, age_interview, age_campaign, groups) %>% 
+  mutate(count_individuals = 1) %>% 
+  group_by(age_campaign, D1, C) %>% 
+  summarise(mean_educ = mean(educ_num_years, na.rm=T),count_individuals=sum(count_individuals))
+mod2 <- glm(mean_educ ~ C*age_campaign , weights=count_individuals, data=df_mod2)
+summary(mod2)
+
+
+df_mod3  <- df5 %>% 
+  select(state, district_name, key, D1, C, educ_num_years, age_interview, age_campaign, groups) %>% 
+  mutate(count_individuals = 1) %>% 
+  unite(grouping, groups, C, sep="_") %>% 
+  group_by(grouping) %>% 
+  summarise(mean_educ = mean(educ_num_years, na.rm=T))
+
+df_mod2_manual <- df_mod3 %>%  
+   spread(grouping, mean_educ)%>% 
+  mutate(ate = (treatment_1-control_young_0)-(control_old_1-control_old_0)) 
+df_mod2_manual
+
+```
+
+
+
+
+```{r Manual DID}
+did <- df5 %>% 
+  group_by(groups, C) %>% 
+  summarise(mean_educ = mean(educ_num_years, na.rm=T))
+
+did1 <- did %>% 
+  filter(is.na(groups)==F) %>% 
+  unite(grouping, groups, C, sep="_") %>% 
+  spread(grouping, mean_educ) %>% 
+  mutate(ate = (treatment_1-control_young_0)-(control_old_1-control_old_0)) 
+
+
+```
+
+
+```{r  Basic first plots}
+# Age (at interview) and mean_education
+
+p1 <- df5 %>% ggplot(aes(age_campaign, mean_educ, color=D1)) + 
+  geom_line(data=. %>% filter(C==1 & D1==0), color="blue") +
+    geom_point(data=. %>% filter(C==1 & D1==0), aes(y=mean(educ_num_years, na.rm=T)),color="blue") +
+  geom_line(data=. %>% filter(C==0 & D1==0 & age_campaign>=10), color="lightblue") +
+    geom_point(data=. %>% filter(C==0 & D1==0 & age_campaign>=10),aes(y=mean(educ_num_years, na.rm=T)), color="lightblue") +
+  geom_line(data=. %>% filter(C==0 & D1==0 & age_campaign<=9), color="darkorange") +
+  geom_point(data=. %>% filter(C==0 & D1==0 & age_campaign<=9), aes(y=mean(educ_num_years, na.rm=T)), color="darkorange") +
+  #geom_point(data=. %>% filter(C==0 & D1==0 & age_2012<=9), color="darkorange") +
+  geom_line(data=. %>% filter(C==1 & D1==1), color="darkred") + 
+  geom_point(data=. %>% filter(C==1 & D1==1),  aes(y=mean(educ_num_years, na.rm=T)), color="darkred") + 
+  theme_minimal() + 
+  labs(caption=("Note: Dark colors highlight treatment districts")) 
+p1
+
+
+p2 <- df_mod1 %>% 
+  split(df_mod1$state) %>% 
+  
+
+
+```
+
+
+
+

@@ -1,0 +1,733 @@
+---
+output: 
+  pdf_document2:
+    toc: true
+    theme: united
+    number_sections: no
+    citation_package: natbib
+    biblio-style: apsr
+    keep_tex: true
+    fig_width: 7
+    fig_height: 6
+    fig_caption: true
+    latex_engine: lualatex
+    template: ~/Documents/Academics/thesis/master/code/template.tex
+title: |
+  | \vspace{5cm}{\LARGE Vaccination as investment in education}
+subtitle: "A difference-in-differences analysis of measles vaccination on education"
+thanks: "Interest in expanding the research into the anti-vaccine movement, and how measles-campaigns might be able to identify defying behaviour on specific regions"
+author: |
+  | \vspace*{1cm}{\ Alvaro Gerns, University of Geneva}
+abstract: |
+  | \vspace*{1cm}\footnotesize Vaccination is regarded as the single most cost-effective preventive health intervention to date. Like other health interventions, it should be understood beyond the direct health benefits as an economic investment with vast and long-lasting social and financial returns. In this study, we focus on outcome-related productivity gains, estimating the causal effect of measles vaccination on educational attainment. We analyze the introduction of the second dose of measles-containing vaccine in India through a phased catch-up campaign conducted in high-priority states from 2010 to 2013. Our results suggest that measles vaccination significantly increases educational attainment for children aged 6 to 14. For every four children vaccinated an additional school year is gained. The study demonstrates that measles vaccination can be understood beyond the direct health benefits as an investment in human capital. 
+keywords: pandoc, r markdown, knitr
+date: |
+  | \vspace*{2cm}{\ `'r format(Sys.time(), '%B %d, %Y')'`}
+geometry: "left=3cm,right=3cm,top=3cm,bottom=2.5cm"
+fontfamily: mathpazo
+fontsize: 11pt
+#mainfont: Calibri
+#sansfont: Calibri
+#monofont: Calibri
+indent: true
+self_contained: no
+always_allow_html: yes
+spacing: double
+bibliography: library.bib
+biblio-style: apsr
+link-citations: yes
+header-includes:
+- \usepackage{float}
+- \usepackage{setspace}
+- \doublespacing
+- \usepackage{booktabs}
+- \usepackage{longtable}
+- \usepackage{array}
+- \usepackage{multirow}
+- \usepackage{wrapfig}
+- \usepackage{float}
+- \usepackage{colortbl}
+- \usepackage{pdflscape}
+- \usepackage{tabu}
+- \usepackage{threeparttable}
+- \usepackage{threeparttablex}
+- \usepackage[normalem]{ulem}
+- \usepackage{makecell}
+- \usepackage{xcolor}
+- \usepackage{dcolumn}
+- \usepackage{wrapfig}
+- \renewcommand{\baselinestretch}{2.0}
+- \usepackage{multirow}
+editor_options: 
+  chunk_output_type: console
+---
+
+
+\clearpage
+\vspace*{3cm}
+\tableofcontents
+\newpage
+
+```{r Libraries, echo=FALSE, include=FALSE}
+#\listoftables
+#rm(list=ls())
+#extrafont::font_import()
+#extrafont::loadfonts()
+#- \usepackage{sansmathfonts}
+
+#- \renewcommand*\familydefault{\sfdefault} %% Only if the base font of the document is to be sans serif
+
+#rmarkdown::render('~/Documents/Academics/thesis/master/code/thesis.Rmd', output_format =  'pdf_document')
+
+#source("~/Documents/Academics/thesis/master/code/source.R")
+
+knitr::opts_chunk$set(echo = FALSE)
+options(tinytex.verbose = TRUE)
+options(warn=1)
+
+
+library(janitor)
+library(foreign)
+library(readxl)
+library(haven)
+
+library(stringr)
+library(splitstackshape)
+library(lubridate)
+
+library(AER)
+library(lmtest)
+library(zoo)
+library(car)
+
+library(survival)
+library(Formula)
+library(rdd)
+library(np)
+library(rddtools)
+library(stargazer)
+library(miceadds)
+library(did)
+
+library(knitr)
+library(kableExtra)
+library(xtable)
+library(plm)
+library(multiwayvcov)
+library(tidyverse)
+library(magick)
+
+
+
+```
+
+# Introduction
+
+The origin of measles has been traced back to the 12th century when the measles virus separated from the now extinct rinderpest virus. From that moment the virus went on to become of the deadliest diseases in history. In the beginning of the 20th century, half a million measles cases were reported in the US alone every year. It was not until 1963, when the vaccine against measles was developed, that cases and deaths exponentially declined [@Najera2019]. Now, after decades of low case rates, a well-controlled disease is seeing an resurgence in all parts of the world, caused partly by weak health systems and defying movements. Now, in the most-populated moment in human history, globalization and urbanization is allowing the highly infectious virus to travel easily between continents spreading tremendously in constantly growing cities. 
+
+The current world context is undoubtedly challenging our global health system, requiring us now more than ever to understand the full impact of vaccination. As Bloom explains in an interview "Under-evaluation goes hand-in-hand with under-investment in vaccines and research, implying that society is not allocating resources efficiently" [@Finnegan2017]. While the scientific community has widely established a strong consensus on the direct health benefits of vaccination in reducing disease, disability, death and inequity [@WHO2019], there is little attention to the full economic benefits of vaccines. 
+  
+This paper makes the following contributions: This study adds to the broader vaccine-related benefits by employing a Difference-in-Differences (DiD) strategy in India to study the causal impact of a measles campaign conducted from 2010 to 2013 on educational attainment. 
+
+
+# Current state of the scientific community
+
+Vaccination is regarded as the single most cost-effective preventive health intervention to date. Like other health interventions, it should be understood beyond the direct health benefits as an economic investment with vast and long-lasting social and financial returns [@Bloom2000]. 
+
+A systematic literature review on cost-effectiveness and economic benefits of vaccines revealed that the majority of papers (86%) show clear evidence that vaccines represent an efficient investment for improving the health of individuals when quantified by Disability-Adjusted Life Years (DALYs) per US dollar [@Ozawa2012]. The review however also reflects how these cost-effectiveness analyses (CEA) and cost-benefit analyses (CBA) are neglecting societal benefits in their calculations.
+
+The effect of vaccination on long-term economic growth occurs through two channels. The first one is through the individuals outcome-related productivity. Immunization represents an investment in human capital to the recipient. There exists a clear effect of health on income, as healthier individuals fuel the economy through increased cognitive ability, education and productivity [@Bloom2000]. A study highlighted in the systematic review looks at the cognitive development in Indonesia by comparing mean test scores of 10-year-old children who had received the six basic vaccines (measles, polio, TB and DPT) with the scores of children who had not received any vaccinations [@Bloom2012]. The authors suggest a positive and large effect of vaccination on test scores but emphasize cautiously that these are not definitive results due to the small sample size restricted by the common support of both groups. Another study looks at the immunization program of Gavi, the Vaccine Alliance, by making impact projections from 2005 until 2020 [@Bloom2005]. The approach this study takes is through the estimated reduction in infant mortality by 4 deaths per thousand live births in 2005 and by 12 per thousand by 2020. The future productivity of the surviving infants is forecasted at an increased annual earning per vaccinated child of 4.61-14.10 US Dollars. 
+
+The second channel is behaviour-related productivity. Immunization leads to an extended life expectancy [@Meij2009], which reduces health care costs for the household and health system and changes spending and saving bevaviour. Finally, the lower infant mortality rates influence parental behaviour as their children live longer, which reduces overall fertility rates causing demographic shifts.  
+
+This paper adds to the first channel of broader economic benefits by examining how vaccination poses an investment in the education of children. The scarcity of the existing literature in representing the broader and long-term economic benefits of vaccination illustrates how the full health, social and economic impact of vaccines remains underestimated. Vaccination remains underutilized relative to global challenges, often constrained by limited government budgets and competing public sector priorities, like poverty alleviation and education [@Bloom2018]. Education and vaccination should not be considered as competing public interventions but of a symbiotic nature. This paper quantifies this complementary aspect looking at the positive impact vaccination has on the educational attainment of the vaccinated individual.
+
+In the following paragraphs I will discuss the two main papers that have studied the direct effect of immunization on the education level of individuals. A study conducted in rural South Africa titled: “The causal effect of childhood measles vaccination on educational attainment,” examines the link between measles vaccination and educational attainment, arguing that preventing measles - which can lead to under-nutrition, blindness, and brain damage - should have a positive effect on education [@Anekwe2015]. The authors constructed a mother fixed-effects model that examined the school grade attainment of siblings who differ in their measles-vaccination status. The idea behind the mother-fixed effects study is to control for all observed and unobserved factors that are shared by siblings in the same household, like aspirations for children to go to school. 
+
+The main variable of interest that distinguishes the children living in the same households is the vaccination status at 12 months of age born between 1995 and 2000. The study controls for all possible variations between the treatment and control group by accounting for: sex; age at start of the school year in which the interview was conducted; calendar year of birth; mother’s age at child’s birth; birth order and number of diphtheria-tetanus-pertussis vaccine doses to control for access to vaccination in general. The result of the model indicates that, on average, measles vaccination increases school grade attainment by 0.188 grades for children residing in rural South Africa. 
+
+The study, however, fails to expose two fundamental issues. Firstly, the study considers a sample size of 4783 children, while the treatment and control group are made up of only 607 infants, which is only 6% of the entire sample. This suggests an under-powered model. Secondly, the study examines the effect of “childhood measles vaccination” by accounting for positive vaccination status at 12 months. The second dose of measles vaccination was introduced in South Africa in 1995, and is administered at 18  months of age. Studies on the vaccine effectiveness have shown that measles-containing vaccine first-dose (MCV1) only reaches 85% effectiveness, whereas the second dose (MCV2) leads to around 97% vaccine effectiveness. Thus, 30% of the treatment group is susceptible to measles and clearly biases downwards the estimates on the effect of measles on education. The South Africa DHS 2003 survey reported measles coverage reaching only 22% after 12 months and increasing to 62% after 23 months of age. This means that even if the treatment status is correct after 12 months, the largest change in treatment status occurs 12 months later. Children who did not receive measles vaccination at 12 months are more likely to have received the vaccine at 23 months. This change in treatment status is not captured in the study and would suggest that part of the control group actually belongs to the treatment group.  It seems therefore plausible that the magnitude of the effect on education is strongly underestimated in this case. 
+
+ The second paper titled “The effect of maternal tetanus immunization on children’s schooling attainment in Matlab, Bangladesh” studies the effect of antenatal maternal tetanus vaccination on schooling attained by children from a randomized control trial conducted in 1974 [@Canning2011]. When controlling for parental characteristics like parents' education and age, as well as time covariates, the RCT shows no statistically significant effect of treatment on years of schooling. Canning et al. then decide to examine the subsample of children of parents with no schooling, and find a significant effect of maternal tetanus vaccine on schooling attainment by 0.25 years on average. Interestingly, the study accounts for attrition bias in the form of outmigration but fails to account for survival bias of children of vaccinated mothers, while stating explicitly neonatal tetanus mortality to be 3.5% without maternal vaccination, which will bias downwards the treatment coefficient. The study conducted in Bangladesh reports a coherent internal validity reduced to the subsample of children of parents with no schooling, where poor nutrition might amplify the probability of contagion. 
+ 
+Both papers indicate a positive effect of vaccination on completed years of schooling, however possibly underestimating these effects. Additionally, the studies focus strongly on maintaining a high internal validity with little uncertainty about the validity outside the country context or region. The following study aims to contribute to the existing literature on broader vaccine benefits by identifying the general average treatment effect of measles vaccination on education for children aged 6 to 14 years old. 
+
+<br><br>
+
+
+# Institutional context
+
+In 1985 measles vaccination was introduced into the Universal Immunization Program UIP of India. That first dose of measles-containing vaccine was given at 9 to 12 months of age and is estimated to assure 85% vaccine effectiveness when given at that age. Measles coverage has been increasing in India but remained at around 70% national coverage, which jointly with 85% effectiveness made 40%[^1] of the annual birth cohort susceptible to measles [@Gupta2011]. A single dose of MCV is consequently insufficient to reach herd immunity, which requires 95% coverage. Estimates for 2010 suggested that 47% of the estimated global measles deaths occurred in India [@Simons2012], while 95% of those cases happened within 10 states. Until 2010, India was the only country in the world using a single dose of MCV in the National Immunization Program.
+
+[^1]: The real protection of measles in India was 0.85 x 0.70 = 60%. 
+
+In 2008 the National Technical Advisory Group on Immunization (NTAGI) recommended the introduction of MCV2 to combat the 15% vaccine inefficacy and close the programmatic gap of 30% missed children by the routine services. The advisory group recommended the delivery of MCV2 through measles catch-up campaigns in states with <80% MCV1 coverage^[Selection of states based on routine immunization measles coverage per DLHS-3; only exception was for Nagaland where reference coverage was taken from CES 2006.]  and through routine delivery for states with >80% MCV1 coverage. 
+
+
+```{r quickmap, out.width = "0.6\\textwidth", fig.align="center", wrapfigure = list("L", .8), fig.width=10, fig.height=12, cache=TRUE, echo=FALSE, message=FALSE, warning=FALSE, comment=NA, eval=TRUE, results='asis'}
+
+#maps <- image_read("/Users/gerns/Documents/Academics/thesis/master_thesis_large_files/export/plots/joined.png")
+#maps <- image_scale(maps, "6000")1
+
+map_intext1 <- image_read("/Users/gerns/Documents/Academics/thesis/master_thesis_large_files/export/plots/map_pre.png")
+map_intext1
+
+```
+
+As can be seen in Figure 1 the North and South of India had high MCV1 coverage rates and were recommended for Routine Immunization (RI) of MCV2, while the Eastern and Western states around the center of India showed low coverage rates and were selected for the campaign^[A more detailed map is included in the Annexes, including the coverage rates and state names.]. An ad hoc expert review committee evaluated the proposed strategy in early 2010 and endorsed the NTAGI recommendation, after which the Government of India started the measles Supplementary Immunization Activity (SIA) in the 14 low coverage states, adding the routine introduction of MCV2 six months after the campaign.
+
+The SIA was targeting 130 million children from 9 months to 10 years, irrespective of their vaccination status. The outbreak surveillance data revealed that 90% of the measles cases were concentrated in that age group [@MoHFW2010]. Due to the magnitude of the campaign, it was conducted in 3 phases. The first phase was piloted from November 2010 to July 2011 and targeted around 13 million children in 45 districts from 13 different states. The second phase was from October 2011 to June 2012, targeting 40 million children in 152 districts. The third phase was conducted from October 2012 to November 2013 and was targeting around 77 million children in 167 districts. This phased approach allowed for establishment of  local best practices and documenting adjustments to be employed during succeeding phases. 
+
+The average campaign had a duration of 3 weeks in each location reaching the target population through 4 different sites. During the first week all types of educational sites with children below 10 years were visited by a vaccination team. Regular RI-sites and additional outreach sites in special areas were covering children who did not go to school or were left out during the vaccination week in schools. Additionally, a mobile team was targeting street children and other high-risk populations in urban areas that may have missed their routine dose in their infancy and were at risk of missing the second dose. Finally, all health facilities would function as vaccination sites throughout the duration of the campaign.   
+
+A mass campaign of this magnitude required a careful implementation and operational strategy that was successfully executed and closely monitored. All logistics and operational costs of the activities were supported by the Government of India with commitments made prior to the phases. Moreover, the experiences and challenges of the first phase were turned into concrete improvement plans for the subsequent phases, resulting in a constant increase in coverage rates between phases: WHO reported that Phase 1 had a coverage rate of 87%, Phase 2 of 90% and Phase 3 a coverage rate of 92%. 
+
+Before the SI, India did not have a sensitive nationwide measles surveillance system, which made it difficult to assess the total impact of the campaigns. During the campaign, the Government of India started improving case-sensitive surveillance which indicated a deceptive increase in reported measles cases. Eventually, a recently published study assessed the direct health impact of the campaign by sampling death events before and after the immunization intervention, showing a significant reduction in measles death. The study suggested that the campaigns prevented between 41,000 to 56,000 deaths [@Wong2019]. 
+
+
+ 
+```{r Importing, echo=FALSE, cache=TRUE, message=FALSE, warning=FALSE}
+# Dataset includes all necessary variables for the 
+df <- readRDS("/Users/gerns/Documents/Academics/thesis/master_thesis_large_files/input/df_v1.rds")
+
+already_mcv2 <- c("puducherry", "sikkim", "goa", "delhi")
+
+```
+
+```{r Last adjustments, echo=FALSE, cache=TRUE, message=FALSE, warning=FALSE}
+df1 <- df %>% 
+  select(-age) %>% 
+  filter(!state %in% already_mcv2) %>% 
+  mutate(count_individuals = 1) %>% 
+  mutate(educ_num_years = case_when(educ_num_years==98 ~ NA_real_, TRUE ~ educ_num_years)) %>% 
+  mutate(mother_d_literate = case_when(mother_d_literate %in% c(3,4) ~ NA_real_,
+                                       mother_d_literate %in% c(1,2) ~ 1,
+                                       TRUE ~ 0))
+  
+df2 <- df1 %>% 
+  mutate(campaign_end_date = case_when(key=="phase_1" ~ dmy("10-07-2011"),
+                                     key=="phase_2" ~ dmy("07-06-2012"),
+                                     key=="phase_3" ~ dmy("27-11-2013"),
+                                     key=="no_campaign" ~ dmy("07-06-2012"))) %>% 
+  mutate(age_campaign_exact = time_length(interval(birth_date, campaign_end_date), "year")) %>% 
+  mutate(D1 = case_when(key !="no_campaign" & age_campaign_exact <10 ~ 1,
+                        TRUE ~ 0)) %>% 
+  mutate(age_campaign_rounded = round(age_campaign_exact,0)) %>% 
+  mutate(age_campaign = floor(age_campaign_exact)) %>% 
+  mutate(region = case_when(key=="no_campaign" ~ 0, 
+                       key!="no_campaign" ~ 1)) %>% 
+  mutate(age_interview = floor(age_interview)) %>% 
+  mutate(groups = case_when(between(age_campaign, 6,9.999) & D1==1 ~ "treatment",
+                            between(age_campaign, 10,13.9999) & D1==0 ~ "control_old",
+                            between(age_campaign, 6,9.999) & D1==0 ~ "control_young",
+                            between(age_campaign, 14,17.999) & D1==0 ~ "control_very_old",
+                            TRUE ~ NA_character_)) %>% 
+  #filter(groups %in% c("treatment", "control_old", "control_young", "control_very_old")) %>% 
+  mutate(age_group = case_when(groups=="treatment" ~ "young", 
+                               groups=="control_old" ~ "old",
+                               groups=="control_young" ~ "young",
+                               groups=="control_very_old" ~ "vold")) %>% 
+    mutate(young = case_when(age_group=="young" ~ 1, age_group=="old" ~ 0, 
+                           TRUE ~NA_real_)) %>% 
+  mutate(old_very_old = case_when(age_group=="old" ~ 1, 
+                                  age_group=="vold" ~ 0, 
+                                  TRUE ~ NA_real_)) %>% 
+   # mutate_at(vars(wealth_index,sex, mother_d_literate, father_educ_level,mother_educ_level), as.factor) %>% 
+  mutate(C = region) %>% 
+  mutate(school_date = case_when(month(interview_date)>=7 ~ dmy(paste0("15-04-", year(interview_date))),
+                                 month(interview_date)<=6 ~ dmy(paste0("15-04-", year(interview_date)-1)))) %>% 
+  mutate(school_age = floor(time_length(interval(birth_date, school_date), "year"))) %>% 
+  mutate(sex = as.factor(sex)) %>% 
+  mutate(residence = as.factor(residence))
+
+
+#df2 %>% tabyl(school_age, region)
+
+
+#df2 %>% tabyl(school_age, age_interview)
+
+```
+  
+  
+# Methodology
+
+The design of the public health intervention provides a great opportunity to study the broader impact of vaccination on education by employing a DiD analysis in which the district of residence and the birth date jointly determine the exposure to the measles vaccination campaign. In the following paragraphs, the methodology and identification strategy will be analyzed in more detail.
+
+The National Family Health Survey (NFHS-4) 2015/2016, which is conducted by the International Institute for Population Sciences under support of the Ministry of Health and Family Welfare (MoHFW), is a sample of 601.509 households providing information on population, health and nutrition for India and each state and union territory. The underlying Birth Recode data contains one record for every child born to every interviewed woman and includes the birth month and birth year. The Household Member Recode contains one record for every household member and captures individuals' information like sex, age, place of residence and education. The joint cross-sectional dataset contains all necessary variables for the analysis and, after including only children between 6 and 20 years old, represents the population of India with 618.254 individuals in 622 districts of 32 states/union territories. There are 18 high-performing states/UTs^[Previously 17 states. On June 2014 the northwestern part of Andhra Pradesh became the 29th state under the name Telangana. Four states/union territories (Puducherry, Sikkim, Goa, Delhi) are already using second dose of measles vaccination and have therefore been excluded from the analysis.] with 266 districts, that were not eligible for the SIA. These states will be part of the control group. The 354 districts from the 14 states that implemented the SIA will be functioning as both treatment and control groups depending on the age and phase considered. 
+
+The second dimension for the identification of treatment relies on the child’s age to be eligible for the measles vaccination during the campaign. The target age of the campaign were all children in the age group 9 months to 10 years . As we have information regarding the start and end date of each phase, we consider a child to be treated when the age of the child is smaller than 10 years at the end date of the corresponding phase of each district.
+
+**Identification variables:**
+\begin{align*}
+Region_i &= 
+\begin{cases} 
+1 & \text{if the child lives in a low-performing state} \\
+0 & \text{if the child lives in a high-performing state}
+\end{cases}
+\\
+Cohort_i &= 
+  \begin{cases} 
+1 & \text{if child ${i}$ did not celebrate the 10th birthday by end of local campaign} \\
+0 & \text{if child ${i}$ did celebrate the 10th birthday by end of local campaign}
+\end{cases}
+\end{align*}
+
+To capture educational attainment, we used the highest school grade that a child had attained until the day of the interview. The date of the interview is expected to cause variation in the outcome variable simply by when during the school-calendar year the interview was conducted. In India the school year is determined at the state-level but all states will finish the school term between March and June. In July all students will have completed the previous school year. If a child is therefore interviewed in January 2016 her educational attainment should be compared to her age at the beginning of the last school term, which in this case would be July 2015. Thus, we control for this variation by including a school-calendar age covariate, that accounts for the age at the beginning of the current school-year. 
+
+The measles campaign is estimated to have averted between 41 000 and 56 000 deaths, most of them among 12–59-month-old children [@Wong2019]. The probability of measles mortality is highest at that age and relatively low for older children. However, the interview was conducted several years after the campaign which means that the younger non-vaccinated children in the control region had a higher probability of measles related deaths. Thus, comparing both regions might induce survival bias, although, the magnitude of the downwards bias is less than 1% and thus insignificant.  
+
+For older children, the measles vaccines prevents serious complications that affect a child’s health and are likely to affect her ability to attend school. The measles campaign is expected to increase the average number of years of education on the treated population. Treatment intensity, measured by the campaign-coverage rate, should have a positive effect on education. Figure 2 shows on the y-axis the difference in average education between two different ages and the x-axis shows the campaign-coverage rate.  As can be interpreted from the graph, a higher coverage rate is highly correlated with a higher marginal increase in education. 
+
+<br>
+In a first simplistic approach we estimate the effect of measles campaigns on educational attainment with a DiD analysis of two age cohorts and two regions that uniquely identify treatment status. The linear model follows a similar approach as proposed by Esther Duflo in her paper “Schooling and Labor Market Consequences of School construction in Indonesia”, which replaces the usual time variable with two different age-cohorts [@Duflo2001]. 
+
+
+```{r Scatterplot, cache=TRUE, fig.width=9, fig.height=9, message=FALSE, warning=FALSE, out.width = ".9\\textwidth", fig.align="center", wrapfigure = list("L", .9)}
+library(hrbrthemes)
+library(devtools)
+source_gist("524eade46135f6348140")
+cov <- read_excel("/Users/gerns/Documents/Academics/thesis/master_thesis_large_files/input/coverage_districts-converted.xlsx", sheet="Table 1", skip=1)
+
+cov1 <- cov %>% 
+  clean_names() %>% 
+  filter(is.na(state)==F) %>% 
+  mutate(state=tolower(state)) %>% 
+  select(state, coverage=coverage_percent) %>% 
+  mutate(state = ifelse(state=="chattisgarh", "chhattisgarh", state))
+
+scatter <- df2 %>% 
+  filter(age_group %in% c("young", "old")) %>%
+  select(state, region, D1, age_group, age_campaign, school_age, educ_num_years) %>% 
+  group_by(state, age_group, school_age, region, D1) %>% 
+  summarize(mean_educ = mean(educ_num_years, na.rm=T)) 
+
+p <- scatter %>% 
+  ggplot(aes(school_age, mean_educ,color=age_group)) + 
+  geom_point() + 
+  geom_smooth(method="lm", se=FALSE) + 
+  stat_smooth_func(geom="text",method="lm",hjust=0.2,parse=TRUE) +
+  facet_wrap(.~region) + theme_ipsum() + theme(legend.title = element_blank()) + labs(caption="Phase 2 dates used for non-campaign ") 
+
+scatter2 <- df2 %>% 
+  #filter(region==1) %>% 
+  filter(age_campaign %in% c(6:14)) %>% 
+  select(state, region, age_group, D1, age_campaign, school_age, educ_num_years) %>% 
+  group_by(state, D1, age_campaign) %>% 
+  summarize(mean_educ = mean(educ_num_years, na.rm=T)) %>% 
+  left_join(cov1, by="state") %>% 
+  ungroup %>% 
+  select(-D1) %>% 
+  spread(age_campaign, mean_educ) %>% 
+  mutate(slope_young = (`9`-`6`)/`6`) %>% 
+  mutate(slope_old = (`14`-`10`)/`10`) %>% 
+  mutate(avg_slope_young = round(lm(slope_young ~coverage)$coefficients[2], 2)) %>% 
+  mutate(avg_slope_old = round(lm(slope_old ~coverage)$coefficients[2], 2)) %>% 
+  gather(group, slope, slope_young, slope_old) %>% 
+  gather(avg_group, avg_slope, avg_slope_old, avg_slope_young) %>% 
+  filter((group=="slope_young" & avg_group=="avg_slope_young") | (group=="slope_old" & avg_group=="avg_slope_old")) %>% 
+  mutate(label = case_when(group=="slope_old" ~ "Difference in education of 14 and 10 year old children",
+                           group=="slope_young" ~ "Difference in education of 9 and 6 year old children")) %>% 
+  arrange(desc(label)) 
+  
+
+p2 <- scatter2 %>% 
+  ggplot(aes(coverage, slope)) + geom_point() + geom_smooth(method="lm", se=FALSE, color="pink3", size=0.5) + 
+  geom_text(aes(label=state), nudge_y = 0.05, nudge_x = -0.0021) +
+  annotate(x=0.75, y=1.4, "label", label = paste0("slope: ",c(0.70, 1.87))) + 
+  facet_wrap(~label, nrow=2)+ 
+  theme_bw() + 
+  labs(title="Figure 2: Difference in average education and campaign coverage by state",
+       y="Difference in average education", x="Coverage rate") + 
+    theme(plot.title = element_text(hjust = 0.4), text = element_text(size=15))
+
+
+p2
+
+#p2 <- scatter2 %>% 
+#  ggplot(aes(coverage, diff_educ)) + geom_point() + geom_smooth(method="lm", se=FALSE, color="pink3", size=0.5) + geom_text(aes(label=state), nudge_y = 0.02, nudge_x = -0.001) +
+#  theme_classic() + 
+#  labs(subtitle= paste0("Slope: ", scatter2$slope), title="Difference in average education and campaign coverage by state",
+#       y="Difference between old and young cohort's average education")
+
+
+```
+
+
+  The older age cohort, aged 10 to 14, will thereby serve as baseline exposing both regions to the control condition. In the younger cohort, aged 6 to 9, the treatment starts affecting only the low-performing states. 
+
+By taking the first difference between the age cohorts of each region, we obtain in the case of the high-performing region the time trend affecting the group in the absence of treatment. For the treatment group we expect to measure not only the time trend but also the effect of the policy. The second difference, between the regions, removes the time trend resulting in the average treatment effect for the treated. 
+
+The grouped DiD regression has the form:
+\begin{equation}
+Y_{ijt} = \beta_0 + \beta_1*Cohort_{t} + \beta_2*Region_{j} + \beta_3*Interaction_{jt} + \beta_4*X_{ijt} + \epsilon_{ijt}
+\end{equation}
+
+Where $Y_{ijt}$ is the last completed school grade of child ${i}$, living in region ${j}$, in the age cohort ${t}$. ${\beta_0}$ is the intercept of the model. ${\beta_1}$ is the time fixed-effects coefficient and ${\beta_2}$ the region-fixed effects coefficient. The treatment effect parameter ${\beta_3}$ is the interaction term of ${Cohort}$ and ${Region}$. ${\beta_4}$ is a vector of all individual-specific covariate coefficients. The covariates included are: sex, a child's age at the beginning of the current school year, mothers' age, years of education of the mother, wealth index and place of residence of the household. We did not include information about the father, as around 80% of the cases do not include any characteristics of the father. $\epsilon_{ijt}$ represents the individual-specific errors with ${\epsilon_{ijt} = \theta_{i} + \phi_{t} + \gamma_{ijt}}$. ${\theta_{i}}$ represents the time-invariant individual-specific errors, like individual heterogeneity, ${\phi_{t}}$ are unobserved time effects and  ${\gamma_{ijt}}$ the temporary individual-specific shocks. 
+
+The plausible DiD approach requires however two assumptions to be met: First, selection into treatment must be independent to the temporary individual-specific shocks. Our approach allows for time-invariant individual heterogeneity by taking time-differences but cannot control for unboserved time-variant confounding. Our constructed time variable is age, which is exogenous to treatment, as all individuals were born before the program. Thus, selection into treatment is not changing over time.
+
+The second and more crucial assumption is the parallel-trends assumption, also known as common trend assumption. It states that in the absence of treatment both groups show the same trend, that is, all time-varying unobservable characteristics are common between both groups. Looking back at our error term the time trend can be explained as ${\phi_{t_1} - \phi_{t_0}}$, which results from the first difference and is assumed to dissappear with the second between-groups-difference if the assumption holds. As the counterfactual cannot be observed it cannot directly be test but we can assess the credibility of this assumption, by showing common pre-treatment time trends. 
+
+Our identification variable ${Cohort}$ is dependent on the age of the individual at the end of the campaign, the cut-off age being 10 years. This is evidently possible in the low-performing region, where the campaign was conducted, not however in the high-performing region. For the control region we do not have district-varying campaign dates and have to assign pseudo-campaign dates. In the low-performing region there are three different campaign-end-dates given by the three phases of the campaign. Thus, we performed three different regression analyses taking one after another each of the Phase-end-dates for the control regions. This robustness check will give us an understanding of the variation in our estimates due the changes in our cohort-setting. The first phase represent 10% of the entire treatment group, the second 35% and the third phase 55%. 
+
+<br><br> 
+  
+```{r Robustness calculations, echo=FALSE, eval=TRUE, include=FALSE, cache=TRUE, message=FALSE, warning=FALSE}
+library(broom)
+scenarios <- df2 %>% 
+  mutate(scenario1 = case_when(key=="no_campaign" ~  dmy("10-07-2011"),
+                               TRUE ~ campaign_end_date)) %>% 
+  mutate(scenario2 = case_when(key=="no_campaign" ~  dmy("07-06-2012"),
+                               TRUE ~ campaign_end_date)) %>% 
+  mutate(scenario3 = case_when(key=="no_campaign" ~  dmy("27-11-2013"),
+                               TRUE ~ campaign_end_date)) %>% 
+  gather(scenarios, campaign_end_date, scenario1:scenario3)
+
+test <- scenarios %>% 
+  split(scenarios$scenarios) %>% 
+  map(~.x %>% 
+  #    filter(scenarios == paste0("scenario",i)) %>% 
+      mutate(age_campaign_exact = time_length(interval(birth_date, campaign_end_date), "year")) %>% 
+      mutate(D1 = case_when(key !="no_campaign" & age_campaign_exact <10 ~ 1,
+                            TRUE ~ 0)) %>% 
+      mutate(age_campaign_rounded = round(age_campaign_exact,0)) %>% 
+      mutate(age_campaign = floor(age_campaign_exact)) %>% 
+      mutate(region = case_when(key=="no_campaign" ~ 0, 
+                           key!="no_campaign" ~ 1)) %>% 
+      mutate(age_interview = floor(age_interview)) %>% 
+      mutate(groups = case_when(between(age_campaign, 6,9.999) & D1==1 ~ "treatment",
+                                between(age_campaign, 10,13.9999) & D1==0 ~ "control_old",
+                                between(age_campaign, 6,9.999) & D1==0 ~ "control_young",
+                                between(age_campaign, 14,17.999) & D1==0 ~ "control_very_old",
+                                TRUE ~ NA_character_)) %>% 
+      filter(groups %in% c("treatment", "control_old", "control_young", "control_very_old")) %>% 
+      mutate(age_group = case_when(groups=="treatment" ~ "young", 
+                                   groups=="control_old" ~ "old",
+                                   groups=="control_young" ~ "young",
+                                   groups=="control_very_old" ~ "vold")) %>% 
+          mutate(young = case_when(age_group=="young" ~ 1, age_group=="old" ~ 0, 
+                           TRUE ~NA_real_)) %>% 
+  mutate(old_very_old = case_when(age_group=="old" ~ 1, 
+                                  age_group=="vold" ~ 0, 
+                                  TRUE ~ NA_real_)) 
+  )
+ 
+library(clubSandwich)
+library(methods)
+
+lm <- test %>% 
+  #map(~.x %>% filter(young %in% c(1,0))) %>% 
+  map(~ lm(educ_num_years ~  young + region*young + region +  school_age + mother_educ_years + mother_age + sex + wealth_index + residence, data=.), .id="model")
+
+out <- test %>% 
+#    map(~.x %>% filter(young %in% c(1,0))) %>% 
+  map(~ summary(lm.cluster(educ_num_years ~ young + region*young + region + school_age + mother_educ_years + mother_age + sex + wealth_index + residence, data=., cluster="state")), .id="model")
+
+out1 <- out[[1]]
+out2 <- out[[2]]
+out3 <- out[[3]]
+
+```
+
+Table 1 presents the ordinary least squares (OLS) estimates of the first model. Our results show that the interaction term is significant for the second and third regression, showing an effect of 0.28 to 0.4 school years gained through treatment. 
+
+```{r Stargazer Model 1 , results='asis', cache=TRUE,  message=FALSE}
+
+stargazer(lm[[1]], lm[[2]], lm[[3]], 
+          t= list(out1[,3], out2[,3], out3[,3]),
+          se = list(out1[,2], out2[,2], out3[,2]), t.auto=FALSE, p.auto=FALSE,
+           p = list(out1[,4], out2[,4], out3[,4]),
+          type = "latex", title="Robustness table", align=TRUE, no.space=TRUE,
+          omit.stat=c("f", "ser"),
+          #column.sep.width = "-5pt",
+          dep.var.labels='Pseudo campaign dates of:',
+          dep.var.caption='Dependent variable: School-years completed',
+          column.labels=c("Phase 1","Phase 2", "Phase 3"),
+          model.numbers  = TRUE,
+          order=c("Constant", "region","young:region", "young", "sex", "school_age", "mother_educ_years", "mother_age", "wealth_index", "residence"), 
+          covariate.labels=c("Constant", "Low-performing region","DiD coefficient", "Young cohort",  "Female", "School-calendar age","Mother years education", "Mother age", "Wealth Index", "Rural"),
+          table.placement = "H", header=FALSE ,  font.size="small",
+          notes.align = "l",
+          notes = 
+            c("Each column represents a scenario, where",
+              "the campaign-end-dates of the phases are",
+              "assigned to the non-campaign states"))
+```
+  
+ 
+  The region-fixed effects and time-fixed effects coefficients prove the expected results with the low-performing states, subject to treatment, also performing on average worse in terms of educational attainment and the younger cohort understandably having decreasing marginal returns to education simply based on the younger age. This first simplistic approach shows large variations between the regressions, depending largely by the forced campaign age of the control region but also not allowing for age-varying heterogeneity by grouping all ages into two cohorts.
+  
+In Figure 3 we plot the ages of the children relative to one static date, January 1st, 2016, and two dynamic dates, a child's age at the end of the campaign and a child's age at the beginning of the current school-year based on the interview date. For the campaign-end-date of the control region we take the end-date of Phase 2. 
+
+<br>
+<br><br>
+
+```{r Plot: Ages, cache=TRUE, warning=FALSE, include=TRUE, fig.width=8, fig.height=10, out.width = ".9\\textwidth", fig.align="center", wrapfigure = list("L", .8), message=FALSE}
+library(hrbrthemes)
+library(ggthemes) # Load
+
+p_mod2 <- df2 %>% 
+  #filter(between(school_age, 6,20)) %>% 
+  mutate(age_2016 = floor(time_length(interval(birth_date, dmy("01-01-2016")), "year"))) %>% 
+  #filter(between(age_campaign, 6,14))%>% 
+  mutate(count_individuals = 1) %>% 
+  select(id, D1, region, age_campaign, school_age, educ_num_years, count_individuals, age_2016) %>% 
+  gather(age_type, age, age_campaign, school_age, age_2016) %>% 
+  filter(between(age, 6, 20)) %>% 
+  mutate(label = case_when(age_type=="age_2016" ~ "Child's age on 01/01/2016",
+                           age_type=="age_campaign" ~ "Child's age on last campaign date",
+                           age_type=="school_age" ~ "Child's age at beginning of current school-term")) %>% 
+  group_by(D1, region, label, age) %>% 
+  summarise(mean_educ = mean(educ_num_years, na.rm=T),count_individuals=sum(count_individuals)) %>% 
+  mutate(group = case_when(region==1 & D1==0 ~ "Target region", 
+                           region==1 & D1==1 ~ "Treatment group",
+                           region==0 ~ "Control region"))%>% 
+  ggplot(aes(x=age, y=mean_educ, color=group)) + geom_line() + 
+  facet_wrap(~label, nrow=3) +
+  theme(legend.text=element_text(size=15), legend.title = element_blank()) + 
+  theme_bw() + 
+  theme(plot.title = element_text(hjust = 0.0), text = element_text(size=12), legend.text=element_text(size=11)) + 
+  theme(legend.title=element_blank()) + 
+  labs(title="Figure 3: Average number of school-years completed by different age types", x="", y="Average number of school-years completed", caption="Note: Age at end of campaign considers Phase 2-dates for the control region") + 
+  scale_y_continuous(limit=c(0,12)) + 
+  scale_x_continuous(limit=c(6,20), breaks=seq(6,20,2)) + 
+  theme(legend.position="bottom") + 
+  scale_color_manual(values=c("darkblue", "#ffae19", "#4cc1bb")) + 
+  scale_x_reverse()
+  
+p_mod2
+
+```
+
+
+\newpage
+The three plots show quite visibly different shifts between the age groups and regions. Interestingly, all three graphs show similar trends prior to the intervention, that is, from 20 years to around 14 years both regions show a similar performance in terms of number of school years completed. This supports the credibility of the identification assumption of parallel trends prior to treatment. 
+
+In a second, more sophisticated model we expand the previous ${2 x 2}$ DiD model to  a ${t x 2}$ model, where ${t}$ represents child’s age at the beginning of the current school year and takes values from ${6}$ to ${20}$, which allows for grade-level heterogeneity. Let us call this variable school-calendar age. This variable measures now accurately the relation to our outcome variable of completed school years. The model also overcomes the issue of pseudo-campaign-date for non-campaign states as the school-calendar age is unrelated to treatment. Moreover, the school-calendar age variable also controls for seasonality by determining all births during the first month of school start, July. Our second dimension, low- and high-performing regions will remain unchanged.  
+
+
+Model 2 has the regression form: 
+\begin{equation}
+Y_{ijt} = \beta_0 + \beta_{1}D_{ijt} + \beta_{2}Age_{t} + \beta_{3}DAge_{ijt} + \beta_{4}Region_{j} + \beta_{5}RegionAge_{jt} + \beta_{6}X_{ijt} + \epsilon_{ijt}
+\end{equation}
+
+Where $D_{ijt}$ is the assignment to treatment of child ${i}$, living in region ${j}$, in the age cohort ${t}$. ${\beta_0}$ is the intercept of the model. ${\beta_2}$ is the time fixed-effects coefficient and ${\beta_4}$ the region-fixed effects coefficient. The treatment effect parameter ${\beta_3}$ is the interaction term of ${Age}$, which is the Age at the beginning of the current school-year, and ${D}$. ${\beta_5}$ is the coefficient of the interaction term of ${Region}$ and ${Age}$ and ${\beta_6}$ is a vector of all individual-specific covariate coefficients. The covariates included are remain the same as the previous model. $\epsilon_{ijt}$ represents as previously discussed the individual-specific errors with ${\epsilon_{ijt} = \theta_{i} + \phi_{t} + \gamma_{ijt}}$. 
+
+
+```{r Model 2, warning=FALSE, include=FALSE, cache=TRUE, eval=TRUE}
+df_mod2 <- df2 %>% 
+  mutate(age_interview = round(age_interview,0)) %>% 
+  filter(between(school_age, 6,20)) %>% 
+  mutate(region = as.factor(region)) %>% 
+  get_dupes(district_name, school_age)
+  
+df_mod2_placebo <- df2 %>% 
+  filter(between(school_age, 14,20) & D1==0) %>% 
+    mutate(region = as.factor(region)) 
+
+
+df2 %>% tabyl(school_age, C, D1)
+df_mod2 %>% tabyl(school_age, C, D1)
+
+mod2_raw <- lm(educ_num_years ~ D1 + school_age + D1*school_age +  region*school_age, data=df_mod2)
+summary(mod2_raw)
+mod2_raw_cl_se <- lm.cluster(educ_num_years ~ D1 + school_age + D1*school_age +  region*school_age, data=df_mod2, cluster="state")
+mod2_raw_se <- as.vector(summary(mod2_raw_cl_se)[,2])
+p_raw <- summary(mod2_raw_cl_se)[,4]
+t_raw <- summary(mod2_raw_cl_se)[,3]
+
+testing <- df_mod2 %>% 
+  filter(D1==0) %>% 
+  filter(school_age>=11)
+
+testing %>% tabyl(school_age, region)
+
+lm_testing <- lm(educ_num_years ~ school_age + region*school_age + sex+  mother_age+  mother_educ_years + wealth_index + residence, data=testing)
+summary(lm_testing)
+lm_testing_cl <- lm.cluster(educ_num_years ~ school_age +  region*school_age + sex+  mother_age+  mother_educ_years + wealth_index + residence, data=testing, cluster="state")
+summary(lm_testing_cl)
+
+# MODEL 2
+mod2 <- lm(educ_num_years ~ D1 + school_age + D1*school_age+  region*school_age + sex+  mother_age+  mother_educ_years + wealth_index + residence, data=df_mod2)
+summary(mod2)
+mod2_cl_se <- lm.cluster(educ_num_years ~ D1 + school_age + D1*school_age +  region*school_age + sex+  mother_age+  mother_educ_years + wealth_index + residence, data=df_mod2, cluster="state")
+summary(mod2_cl_se)
+mod2_se <- as.vector(summary(mod2_cl_se)[,2])
+p_mod2 <- summary(mod2_cl_se)[,4]
+t_mod2 <- summary(mod2_cl_se)[,3]
+
+# Placebo model
+mod2_placebo <- lm(educ_num_years ~ school_age + region*school_age + mother_age + mother_educ_years + sex + wealth_index + residence, data=df_mod2_placebo)
+summary(mod2_placebo)
+mod2_placebo_cl <- lm.cluster(educ_num_years ~ school_age + region*school_age + mother_age + mother_educ_years + sex + wealth_index + residence, data=df_mod2_placebo, cluster="state")
+se_placebo <- as.vector(summary(mod2_placebo_cl)[,2])
+p_placebo <- summary(mod2_placebo_cl)[,4]
+t_placebo <- summary(mod2_placebo_cl)[,3]
+
+
+#ci=TRUE, ci.level=0.9, omit.stat=c("f", "ser"))
+
+```
+
+
+```{r Model 2 output, results='asis', cache=TRUE, include=TRUE,  message=FALSE}
+
+stargazer(mod2_raw, mod2, mod2_placebo,type = "latex",
+          se = list(mod2_raw_se, mod2_se, se_placebo), 
+          p = list(p_raw, p_mod2, p_placebo),
+          t = list(t_raw, t_mod2, t_placebo), t.auto=FALSE, p.auto=FALSE,
+          title="Regression Results Model 2", align=TRUE, no.space=TRUE,
+          omit.stat=c("f", "ser", "rsq"),
+          column.sep.width = "-10pt",
+           #order=c("Constant", "region", "young", "young:region", "sex", "mother_educ_years", "mother_age", "wealth_index"), 
+          table.placement = "H",
+          dep.var.labels="School-years completed",
+          column.labels = c('\\multirow{2}{4 cm}{Experiment of Interest}', '\\multirow{2}{4 cm}{Experiment of Interest}','\\multirow{2}{4 cm}{Control Experiment}'),
+          order=c("Constant", "D1","D1:school_age", "school_age",  "school_age:region","region", "sex", "mother_educ_years", "mother_age", "wealth_index", "residence"),
+          covariate.labels=c("Constant", "Treatment", "DiD coefficient","School-calendar age", "Age-region interaction", "Region","Female", "Mother years education", "Mother age", "Wealth Index", "Rural"),
+          header=FALSE)
+
+```
+
+
+We run three regressions with the second model estimating in all cases by OLS. In one of the regression we test the parallel-trends assumption by considering only children aged 14 to 20. The identification assumption states that individuals that were not exposed to the campaign aged 14 or older should have similar trends in their outcome variable between regions. The coefficient of interest, ${Age}$ and ${Region}$ is statistically insignificant suggesting that the estimated differences in differences prior to treatment are very close to 0. This alludes that the identification assumptions were met and the second model shows consistent estimates. 
+
+# Results and cost benefit analysis
+
+The first and second regression consider the experiment of interest including all children aged 6 to 20 years. As the necessary assumptions are met the differences-in-difference estimates of our experiment of interest are unbiased.  The results suggest that the measles-campaign significantly increases the number of school-years completed: children that received the vaccine benefit, on average, by 0.25 years of school grade attainment in comparison to children that did not receive the vaccine. For every 4 children, between the ages of 6 and 14 years, receiving the measles vaccination, one full year of school grade attainment is gained. These results are most likely even larger as the exposure of the program had an average coverage rate of 90%, which means that the true effect of the measles campaign on educational attainment is biased downwards. Additionally, the fact that the campaign is targeting a young cohort means that the schooling deficit of the unvaccinated population might actually be larger than estimated. 
+
+The cost of the campaign is comprised of the vaccine and auto-disable syringes which accounted for 33.2 million USD and the operational costs of 25.9 million USD, amounting to a total of 59.1 million USD. The campaign reached around 118.83 million children. Thus, the total cost of vaccinating a child during the campaign is 0.50 USD per child. The average cost of 2 USD for one more year of schooling is comparable with the 3.5 USD deworming cost associated with one additional year of schooling and makes measles-campaign a very cost-effective educational intervention. 
+
+In economics the most widely-used method to estimate one's individual returns to schooling is the mincer equation, also known as the basic earnings function. A recent study published by the National Institute of Education in India analyzed the returns to schooling in India augmenting the mincerian estimates to capture school-level heterogeneity [@Mitra2019]. The estimates predict at the elementary school level an average marginal increase of 2.63% on wages due to an additional year of schooling. This rate corresponds to our treatment group that ranges from 6 to 14 years representing the entire elementary school age group. With an investment of 0.50 USD into the measles-campaign, a child has an expected average wage increase of 0.6% annually.
+
+Finally, we look at how treatment affects educational attainment at different socio-economic levels. Previous research on the relation between vaccination and education has highlighted that vaccination of children from lower socioeconomic backgrounds results in larger positive effects on education, as poor nutrition may magnify the effect of infection [@Canning2011]. In Table 3 (see Annexes) we divide our sample into 5 subsamples, based on the wealth quintiles defined by the Demographic and Health Survey. The wealth index is a composite score based on household data like household's assets and access to and source of drinking water, type of toilet, access to electricity, type of vehicles, etc.. Our findings demonstrate a large difference in the effect of treatment on education by socioeconomic groups, with the poorest quintile of the population gaining 0.36 additional school years by receiving vaccination, while the richest quintile gains only an additional 0.14 years of schooling through vaccination. These findings are consistent with previous research in stressing the large benefits of vaccination to children of low socioeconomic backgrounds.
+
+# Discussion
+
+There exists a statically signficiant and economically large effect of childhood measles-campaign vaccination on the number of completed school years of children aged 6 to 14. The results indicate that for every 4 children vaccinated against measles there is on average one additional school year gained. Thus, vaccination can be understood as investment in education. In terms of wage gains this could be translated into an annual wage increase of 0.6% per child with a one-time cost of 0.50 USD. As the affected population is quite young, the total effect on schooling, especially for later years might be largely underestimated.
+
+Our findings are consistent with previous research, in particular regarding the increasing returns to education for children from low socioeconomic backgrounds. In poor communities the severity of the measles disease is magnified through undernutrition and weak immune systems. The necessity of vaccination in these settings has wide-ranging implications for the life and health of these children. 
+
+While this study has shown the signficant direct effect of vaccination on years of schooling, ideally, the direct wage gains and economic returns should be analyzed in a follow-up study, when the vaccinated cohort enters the age of employment in order to accurately deduce the economic significance of the intervention. 
+
+There are some limitations to our study. A first limitation is that we do not have information on children's overall health status, as well as vaccination status of other vaccines. The vaccination status from other vaccines will strongly influence children's health and thus schooling. However, our DiD model is designed to control for omitted variables by capturing pre-treatment variation between groups. While children's health is evidently a channel affecting schooling outcomes, we have proven that existing differences in our outcome variable between groups were constant pre-treatment for multiple age-years. With a time-invariant difference of children's health affecting both groups our result remains the unbiased average treatment effect of measles vaccination on education. A possibility for bias is if during treatment children died and thus were excluded from the sample introducing attrition bias. However, as previously stated, the magnitude of this bias is insignificant given the sample size and low mortality rate during this age. 
+
+Another limitation is the unaccounted effect of migration on our estimates. However, We assume internal and external migration to be consistent over time and accounted for in our model through the common time trend. Thus, migration does not bias our estimates. 
+
+Finally, it is important to stress the how our estimates are focusing on children at school, going beyond the prevented mortality of vaccines, but signaling the importance of vaccines even for older age groups. In our case the effect is limited to children between the ages of 6 to 14 but further research should stress the value of vaccines in older age cohorts. 
+
+Future research should expand on this study analyzing the same cohort on the effects of vaccination on secondary and tertiary education as well as labor market outcomes.
+
+
+# Annexes
+
+```{r MAPS, out.width = "1.1\\textwidth", fig.align="center", fig.width=10, fig.height=14, cache=TRUE, echo=FALSE, message=FALSE, warning=FALSE, comment=NA, eval=TRUE, results='asis'}
+library(magick)
+
+#maps <- image_read("/Users/gerns/Documents/Academics/thesis/master_thesis_large_files/export/plots/joined.png")
+#maps <- image_scale(maps, "6000")1
+
+map1 <- image_read("/Users/gerns/Documents/Academics/thesis/master_thesis_large_files/export/plots/map_pre_rates.png")
+map1
+
+
+map2 <- image_read("/Users/gerns/Documents/Academics/thesis/master_thesis_large_files/export/plots/map_post.png")
+map2
+
+
+```
+
+```{r By wealth quintiles, warning=FALSE, include=FALSE, cache=TRUE, eval=TRUE}
+
+df_mod2 %>% tabyl(wealth_index)
+
+df_wealth <- df_mod2 %>% 
+  mutate(wealth_quintile = case_when(wealth_index==1 ~ "Poorest",
+                                     wealth_index==2 ~ "Poorer",
+                                     wealth_index==3 ~ "Middle",
+                                     wealth_index==4 ~ "Richer",
+                                     wealth_index==5 ~ "Richest",
+                                     TRUE ~ NA_character_)) %>% 
+  split(df_mod2$wealth_index) 
+
+
+p_wealth <- df_mod2 %>% 
+  filter(region==1) %>% 
+  group_by(wealth_index, school_age) %>% 
+  summarise(mean_educ = mean(educ_num_years, na.rm=T)) %>% 
+  ungroup() %>% 
+  mutate(wealth_index = as.factor(wealth_index)) %>% 
+  ggplot(aes(x=school_age))+ geom_line(aes(y=mean_educ, color=wealth_index, group=wealth_index)) 
+
+library(clubSandwich)
+library(methods)
+
+lm_wealth <- df_wealth %>% 
+  #map(~.x %>% filter() %in% c(1,0))) %>% 
+  map(~ lm(educ_num_years ~ D1 + school_age + D1*school_age +  region*school_age + sex +  mother_age+  mother_educ_years + residence, data=.), .id="model")
+
+lm.cl_wealth <- df_wealth %>% 
+  #map(~.x %>% filter(between(school_age, 6,20))) %>% 
+  map(~ summary(lm.cluster(educ_num_years ~ D1 + school_age + D1*school_age +  region*school_age + sex +  mother_age+  mother_educ_years + residence, data=., cluster="state")), .id="model")
+
+wealth1 <- lm.cl_wealth[[1]]
+wealth2 <- lm.cl_wealth[[2]]
+wealth3 <- lm.cl_wealth[[3]]
+wealth4 <- lm.cl_wealth[[4]]
+wealth5 <- lm.cl_wealth[[5]]
+
+```
+
+
+```{r Wealth models output, results='asis', cache=TRUE, include=TRUE,  message=FALSE}
+
+stargazer(lm_wealth[[1]], lm_wealth[[2]], lm_wealth[[3]], lm_wealth[[4]], lm_wealth[[5]], 
+          t= list(wealth1[,3], wealth2[,3], wealth3[,3], wealth4[,3], wealth5[,3]),
+          se = list(wealth1[,2], wealth2[,2], wealth3[,2], wealth4[,2], wealth5[,2]), 
+          t.auto=FALSE, p.auto=FALSE,
+           p = list(wealth1[,4], wealth2[,4], wealth3[,4], wealth4[,4], wealth5[,4]),
+          type = "latex", title="Results by wealth quintiles", align=TRUE, no.space=TRUE,
+          omit.stat=c("f", "ser"),
+          column.sep.width = "-10pt",
+                    column.labels=c("Poorest","Poorer", "Middle", "Richer", "Richest"),
+          dep.var.labels="School-years completed",
+           order=c("Constant","D1", "D1:school_age","region","school_age:region","school_age", "sex", "mother_educ_years", "mother_age", "residence"), 
+          covariate.labels=c("Constant", "Treatment", "DiD coefficient", "Region", "Age-region interaction", "School-calendar age", "Female", "Mother years education", "Mother age", "Rural"),
+          table.placement = "H",header=FALSE )
+```
+
+
+```{r Residence URBAN/RURAL, warning=FALSE, include=FALSE, cache=TRUE, eval=FALSE}
+
+lm_residence <- df_mod2 %>% 
+  split(df_mod2$residence) %>% 
+  #map(~.x %>% filter() %in% c(1,0))) %>% 
+  map(~ lm(educ_num_years ~ D1 + school_age + D1*school_age +  region*school_age + sex +  mother_age+  mother_educ_years + wealth_index, data=.), .id="model")
+
+lm_residence
+
+lm.cl_residence <- df_mod2 %>% 
+  #map(~.x %>% filter(between(school_age, 6,20))) %>% 
+  map(~ summary(lm.cluster(educ_num_years ~ D1 + school_age + D1*school_age +  region*school_age + sex +  mother_age+  mother_educ_years + wealth_index, data=., cluster="state")), .id="model")
+
+wealth_urban <- lm.cl_residence[[1]]
+wealth_rural <- lm.cl_residence[[2]]
+
+```
+
+
+\newpage
+
+# References
+
+
+
+
+
+
+
+
+
+
+
+
